@@ -1,0 +1,28 @@
+# Build & Output Directories
+out/
+dist/
+build/
+*.vsix
+.vscode-test/
+
+# Dependencies
+node_modules/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+*.log
+tmp/
+temp/
+.scratch/
+
+# IDE Configuration
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json

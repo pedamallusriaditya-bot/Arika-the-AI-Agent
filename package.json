@@ -1,0 +1,118 @@
+{
+  "name": "arika",
+  "displayName": "Arika",
+  "description": "Production-grade AI coding assistant extension for VS Code",
+  "version": "0.0.1",
+  "publisher": "arika-dev",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codetitan-sidebar-container",
+          "title": "CodeTitan",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "codetitan-sidebar-container": [
+        {
+          "type": "webview",
+          "id": "codetitan.sidebarView",
+          "name": "CodeTitan",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codetitan.openChat",
+        "title": "Arika: Open Chat Panel",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "codetitan.explainSelection",
+        "title": "Arika: Explain Selection",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "codetitan.explainCurrentFile",
+        "title": "Arika: Explain Current File",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "codetitan.focusSidebar",
+        "title": "CodeTitan: Focus Sidebar Chat",
+        "icon": "$(comment-discussion)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codetitan.explainCurrentFile",
+          "group": "arika@1"
+        },
+        {
+          "command": "codetitan.explainSelection",
+          "group": "arika@2",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "codetitan.openChat",
+          "group": "arika@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codetitan.openChat"
+        },
+        {
+          "command": "codetitan.explainSelection"
+        },
+        {
+          "command": "codetitan.explainCurrentFile"
+        },
+        {
+          "command": "codetitan.focusSidebar"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codetitan.explainSelection",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^7.4.0"
+  }
+}
