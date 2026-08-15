@@ -102,14 +102,21 @@ export class AIService implements IAIService {
         let systemPrompt = 'You are Arika CodeTitan, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
 
         if (context) {
+            const maxLen = 2000;
+            let fileSnippet = context.content;
+            if (fileSnippet.length > maxLen) {
+                const totalLines = context.content.split('\n').length;
+                fileSnippet = `${context.content.slice(0, maxLen)}\n\n[... truncated ${totalLines} total lines for token budget efficiency ...]`;
+            }
+
             systemPrompt += `\n\n--- ACTIVE WORKSPACE FILE CONTEXT ---
 - File Name: ${context.fileName}
 - Language: ${context.languageId}
 - Path: ${context.filePath || 'N/A'}
 
---- FILE CONTENTS ---
+--- FILE SNIPPET ---
 \`\`\`${context.languageId}
-${context.content}
+${fileSnippet}
 \`\`\``;
         }
 
@@ -208,7 +215,7 @@ ${context.content}
             return '⚠️ **OpenAI Auth Error**: Invalid or expired API Key. Please verify your `OPENAI_API_KEY` in `.env`.';
         }
         if (error?.status === 429 || error?.message?.includes('429')) {
-            return '⚠️ **OpenAI Rate Limit / Quota Exceeded**: You have reached your rate limit or run out of credits.';
+            return '⚠️ **OpenAI Rate Limit / Quota Exceeded (429)**: Your OpenAI API key has run out of tokens or billing quota.\n\n👉 **How to fix:**\n1. Check your account billing balance at [platform.openai.com/account/billing](https://platform.openai.com/account/billing).\n2. Update your `OPENAI_API_KEY` in the `.env` file with an active key with credits.';
         }
         if (error?.code === 'ENOTFOUND' || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNRESET') {
             return '⚠️ **Network Error**: Connection lost reaching OpenAI servers. Retries attempted.';

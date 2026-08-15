@@ -61,7 +61,8 @@ export class RepoQAService implements IRepoQAService {
                 selectedCode: searchFindingsText
             },
             {
-                maxCharacterBudget: 16000,
+                maxCharacterBudget: 3500,
+                maxFileContentLength: 1500,
                 includeProjectTree: true
             }
         );
