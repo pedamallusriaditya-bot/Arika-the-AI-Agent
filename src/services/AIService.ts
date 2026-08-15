@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
@@ -33,28 +34,38 @@ export interface IAIService {
 }
 
 export class AIService implements IAIService {
+    private geminiClient: GoogleGenerativeAI | undefined;
     private openaiClient: OpenAI | undefined;
-    private readonly defaultModel: string = 'gpt-4o-mini';
+
+    private readonly geminiModelName: string = 'gemini-1.5-flash';
+    private readonly openaiModelName: string = 'gpt-4o-mini';
 
     constructor() {
-        this.initializeClient();
+        this.initializeClients();
     }
 
-    private initializeClient(): void {
-        const apiKey = process.env.OPENAI_API_KEY?.trim();
+    private initializeClients(): void {
+        const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+        const openaiKey = process.env.OPENAI_API_KEY?.trim();
 
-        if (!apiKey) {
-            Logger.warn('[AIService] OPENAI_API_KEY environment variable is not set. Real AI responses require a valid API key.');
-            this.openaiClient = undefined;
-            return;
+        if (geminiKey) {
+            try {
+                this.geminiClient = new GoogleGenerativeAI(geminiKey);
+                Logger.info('[AIService] Google Gemini client initialized successfully with GEMINI_API_KEY.');
+            } catch (error) {
+                Logger.error('[AIService] Failed to initialize Google Gemini client', error);
+                this.geminiClient = undefined;
+            }
         }
 
-        try {
-            this.openaiClient = new OpenAI({ apiKey });
-            Logger.info('[AIService] OpenAI client successfully initialized using environment variable API key.');
-        } catch (error) {
-            Logger.error('[AIService] Failed to construct OpenAI client instance', error);
-            this.openaiClient = undefined;
+        if (openaiKey) {
+            try {
+                this.openaiClient = new OpenAI({ apiKey: openaiKey });
+                Logger.info('[AIService] OpenAI client initialized successfully with OPENAI_API_KEY.');
+            } catch (error) {
+                Logger.error('[AIService] Failed to initialize OpenAI client', error);
+                this.openaiClient = undefined;
+            }
         }
     }
 
@@ -71,7 +82,7 @@ export class AIService implements IAIService {
     }
 
     /**
-     * Executes a streaming query to OpenAI with retry resilience and cancellation support.
+     * Executes a streaming query using Gemini (preferred) or OpenAI (fallback).
      */
     public async askStream(
         prompt: string,
@@ -81,15 +92,9 @@ export class AIService implements IAIService {
     ): Promise<string> {
         Logger.info(`[AIService] Executing streaming prompt (${prompt.length} chars)${context ? ` [${context.fileName}]` : ''}`);
 
-        if (!this.openaiClient) {
-            this.initializeClient();
-        }
-
-        if (!this.openaiClient) {
-            const errorMsg = '⚠️ OpenAI API key not found. Please set your OPENAI_API_KEY in the .env file or environment variables.';
-            Logger.error(`[AIService] ${errorMsg}`);
-            onChunk(errorMsg);
-            return errorMsg;
+        // Re-check client initializations if env vars changed dynamically
+        if (!this.geminiClient && !this.openaiClient) {
+            this.initializeClients();
         }
 
         const trimmed = prompt.trim();
@@ -99,17 +104,18 @@ export class AIService implements IAIService {
             return emptyPromptMsg;
         }
 
-        let systemPrompt = 'You are Arika CodeTitan, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
+        // Build system prompt with workspace context
+        let systemInstruction = 'You are Arika CodeTitan, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
 
         if (context) {
-            const maxLen = 2000;
+            const maxLen = 4000;
             let fileSnippet = context.content;
             if (fileSnippet.length > maxLen) {
                 const totalLines = context.content.split('\n').length;
                 fileSnippet = `${context.content.slice(0, maxLen)}\n\n[... truncated ${totalLines} total lines for token budget efficiency ...]`;
             }
 
-            systemPrompt += `\n\n--- ACTIVE WORKSPACE FILE CONTEXT ---
+            systemInstruction += `\n\n--- ACTIVE WORKSPACE FILE CONTEXT ---
 - File Name: ${context.fileName}
 - Language: ${context.languageId}
 - Path: ${context.filePath || 'N/A'}
@@ -120,69 +126,108 @@ ${fileSnippet}
 \`\`\``;
         }
 
-        // Retry loop parameters
-        const maxRetries = 2;
-        let attempt = 0;
-
-        while (attempt <= maxRetries) {
-            if (cancelToken?.isCancellationRequested) {
-                const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
-                onChunk(cancelMsg);
-                return cancelMsg;
-            }
-
-            try {
-                const responseStream = await this.openaiClient.chat.completions.create({
-                    model: this.defaultModel,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: trimmed }
-                    ],
-                    stream: true,
-                    temperature: 0.7
-                });
-
-                let accumulatedText = '';
-
-                for await (const chunk of responseStream) {
-                    if (cancelToken?.isCancellationRequested) {
-                        Logger.info('[AIService] Stream cancelled by CancellationToken during chunk iteration.');
-                        const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
-                        onChunk(cancelMsg);
-                        return accumulatedText + cancelMsg;
-                    }
-
-                    const token = chunk.choices[0]?.delta?.content || '';
-                    if (token) {
-                        accumulatedText += token;
-                        onChunk(token);
-                    }
-                }
-
-                if (!accumulatedText.trim()) {
-                    const fallback = 'No output generated by OpenAI.';
-                    onChunk(fallback);
-                    return fallback;
-                }
-
-                return accumulatedText;
-            } catch (error: any) {
-                attempt++;
-                Logger.error(`[AIService] OpenAI Streaming API Exception (Attempt ${attempt}/${maxRetries + 1})`, error);
-
-                if (attempt <= maxRetries && this.isTransientError(error)) {
-                    Logger.info(`[AIService] Transient network failure detected. Retrying in ${attempt * 1000}ms...`);
-                    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
-                    continue;
-                }
-
-                const userFriendlyError = this.formatErrorMessage(error);
-                onChunk(userFriendlyError);
-                return userFriendlyError;
-            }
+        // Use Google Gemini API if client is available
+        if (this.geminiClient) {
+            return this.askGeminiStream(systemInstruction, trimmed, onChunk, cancelToken);
         }
 
-        return '⚠️ Max network retries exceeded.';
+        // Fallback to OpenAI API if client is available
+        if (this.openaiClient) {
+            return this.askOpenAIStream(systemInstruction, trimmed, onChunk, cancelToken);
+        }
+
+        const noKeyMsg = '⚠️ No valid AI API Key found. Please set `GEMINI_API_KEY` or `OPENAI_API_KEY` in your `.env` file.';
+        Logger.error(`[AIService] ${noKeyMsg}`);
+        onChunk(noKeyMsg);
+        return noKeyMsg;
+    }
+
+    /**
+     * Executes real-time token streaming using Google Gemini SDK.
+     */
+    private async askGeminiStream(
+        systemInstruction: string,
+        userPrompt: string,
+        onChunk: (chunk: string) => void,
+        cancelToken?: vscode.CancellationToken
+    ): Promise<string> {
+        try {
+            const model = this.geminiClient!.getGenerativeModel({
+                model: this.geminiModelName,
+                systemInstruction
+            });
+
+            const resultStream = await model.generateContentStream(userPrompt);
+            let accumulatedText = '';
+
+            for await (const chunk of resultStream.stream) {
+                if (cancelToken?.isCancellationRequested) {
+                    Logger.info('[AIService] Stream cancelled by user (Gemini).');
+                    const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
+                    onChunk(cancelMsg);
+                    return accumulatedText + cancelMsg;
+                }
+
+                const token = chunk.text();
+                if (token) {
+                    accumulatedText += token;
+                    onChunk(token);
+                }
+            }
+
+            return accumulatedText;
+        } catch (error: any) {
+            Logger.error('[AIService] Gemini API Exception', error);
+            const formattedError = this.formatErrorMessage(error, 'Gemini');
+            onChunk(formattedError);
+            return formattedError;
+        }
+    }
+
+    /**
+     * Executes real-time token streaming using OpenAI SDK.
+     */
+    private async askOpenAIStream(
+        systemInstruction: string,
+        userPrompt: string,
+        onChunk: (chunk: string) => void,
+        cancelToken?: vscode.CancellationToken
+    ): Promise<string> {
+        try {
+            const responseStream = await this.openaiClient!.chat.completions.create({
+                model: this.openaiModelName,
+                messages: [
+                    { role: 'system', content: systemInstruction },
+                    { role: 'user', content: userPrompt }
+                ],
+                stream: true,
+                temperature: 0.7
+            });
+
+            let accumulatedText = '';
+
+            for await (const chunk of responseStream) {
+                if (cancelToken?.isCancellationRequested) {
+                    Logger.info('[AIService] Stream cancelled by user (OpenAI).');
+                    const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
+                    onChunk(cancelMsg);
+                    return accumulatedText + cancelMsg;
+                }
+
+                const token = chunk.choices[0]?.delta?.content || '';
+                if (token) {
+                    accumulatedText += token;
+                    onChunk(token);
+                }
+            }
+
+            return accumulatedText;
+        } catch (error: any) {
+            Logger.error('[AIService] OpenAI API Exception', error);
+            const formattedError = this.formatErrorMessage(error, 'OpenAI');
+            onChunk(formattedError);
+            return formattedError;
+        }
     }
 
     public async explainCode(
@@ -199,27 +244,14 @@ ${fileSnippet}
         return this.ask(prompt, context, cancelToken);
     }
 
-    private isTransientError(error: any): boolean {
-        return (
-            error?.code === 'ENOTFOUND' ||
-            error?.code === 'ETIMEDOUT' ||
-            error?.code === 'ECONNRESET' ||
-            error?.status === 500 ||
-            error?.status === 502 ||
-            error?.status === 503
-        );
-    }
-
-    private formatErrorMessage(error: any): string {
-        if (error?.status === 401 || error?.message?.includes('401')) {
-            return '⚠️ **OpenAI Auth Error**: Invalid or expired API Key. Please verify your `OPENAI_API_KEY` in `.env`.';
+    private formatErrorMessage(error: any, provider: string): string {
+        const msg = error?.message || '';
+        if (error?.status === 401 || msg.includes('401') || msg.includes('API_KEY_INVALID')) {
+            return `⚠️ **${provider} Auth Error**: Invalid or expired API Key. Please check your \`.env\` configuration.`;
         }
-        if (error?.status === 429 || error?.message?.includes('429')) {
-            return '⚠️ **OpenAI Rate Limit / Quota Exceeded (429)**: Your OpenAI API key has run out of tokens or billing quota.\n\n👉 **How to fix:**\n1. Check your account billing balance at [platform.openai.com/account/billing](https://platform.openai.com/account/billing).\n2. Update your `OPENAI_API_KEY` in the `.env` file with an active key with credits.';
+        if (error?.status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+            return `⚠️ **${provider} Quota / Rate Limit Exceeded**: You have reached the rate limit or run out of credits for ${provider}.`;
         }
-        if (error?.code === 'ENOTFOUND' || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNRESET') {
-            return '⚠️ **Network Error**: Connection lost reaching OpenAI servers. Retries attempted.';
-        }
-        return `⚠️ **OpenAI Error**: ${error?.message || 'An unexpected error occurred while communicating with AI service.'}`;
+        return `⚠️ **${provider} Error**: ${msg || 'An unexpected error occurred while communicating with AI service.'}`;
     }
 }

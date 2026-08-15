@@ -112,6 +112,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "dotenv": "^17.4.2",
     "openai": "^7.4.0"
   }
