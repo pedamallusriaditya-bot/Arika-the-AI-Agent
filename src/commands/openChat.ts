@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { IAIService, CurrentFileContext } from '../services/AIService';
 import { Logger } from '../utils/logger';
 
@@ -51,40 +50,34 @@ export class OpenChatCommand {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.file(context.extensionPath)]
+                localResourceRoots: [context.extensionUri]
             }
         );
 
         OpenChatCommand.currentPanel = panel;
         panel.webview.html = this.getWebviewContent(panel.webview);
 
+        panel.onDidDispose(
+            () => {
+                Logger.info('Arika Chat webview panel disposed.');
+                OpenChatCommand.currentPanel = undefined;
+            },
+            null,
+            context.subscriptions
+        );
+
         panel.webview.onDidReceiveMessage(
-            async (message: { command: string; text?: string }) => {
+            async (message) => {
                 switch (message.command) {
                     case 'sendMessage':
                         if (message.text) {
-                            Logger.info(`[Panel Webview -> Command] User prompt: ${message.text}`);
+                            Logger.info(`[Panel Webview -> Extension] User prompt: ${message.text}`);
                             await this.handleUserMessage(panel, message.text, aiService);
-                        }
-                        break;
-                    case 'copyCode':
-                        if (message.text) {
-                            await vscode.env.clipboard.writeText(message.text);
-                            vscode.window.showInformationMessage('Code copied to clipboard!');
                         }
                         break;
                 }
             },
             undefined,
-            context.subscriptions
-        );
-
-        panel.onDidDispose(
-            () => {
-                OpenChatCommand.currentPanel = undefined;
-                Logger.info('Arika Chat Panel closed.');
-            },
-            null,
             context.subscriptions
         );
     }
@@ -97,7 +90,7 @@ export class OpenChatCommand {
 
         const document = editor.document;
         return {
-            fileName: path.basename(document.fileName),
+            fileName: document.fileName.split(/[\\/]/).pop() || 'Untitled',
             languageId: document.languageId,
             content: document.getText(),
             filePath: document.fileName
@@ -151,166 +144,169 @@ export class OpenChatCommand {
             --card-bg: rgba(255, 255, 255, 0.05);
             --accent-color: #89b4fa;
             --accent-hover: #b4befe;
-            --user-bubble: #313244;
-            --ai-bubble: #181825;
-            --border-color: rgba(255, 255, 255, 0.1);
+            --user-bubble: linear-gradient(135deg, #6c5ce7, #89b4fa);
+            --ai-bubble: rgba(255, 255, 255, 0.04);
+            --border-color: rgba(255, 255, 255, 0.12);
+            --code-bg: #11111b;
+            --bold-color: #f5e0dc;
+            --inline-code-fg: #cba6f7;
+            --inline-code-bg: rgba(203, 166, 247, 0.15);
         }
 
         body {
-            font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
             background-color: var(--bg-color);
             color: var(--fg-color);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
         }
 
         header {
             padding: 16px 24px;
             border-bottom: 1px solid var(--border-color);
-            background: rgba(0, 0, 0, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            background: rgba(0, 0, 0, 0.25);
+            display: flex; align-items: center; justify-content: space-between;
         }
 
         h2 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--accent-color);
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            margin: 0; font-size: 1.1rem; font-weight: 700;
+            color: var(--accent-color); display: flex;
+            align-items: center; gap: 8px; letter-spacing: 0.5px;
         }
 
         .badge {
-            font-size: 0.7rem;
-            background: rgba(137, 180, 250, 0.15);
-            color: var(--accent-color);
-            padding: 2px 8px;
-            border-radius: 12px;
-            border: 1px solid rgba(137, 180, 250, 0.3);
+            font-size: 0.7rem; background: rgba(137, 180, 250, 0.15);
+            color: var(--accent-color); padding: 2px 8px;
+            border-radius: 12px; border: 1px solid rgba(137, 180, 250, 0.3);
         }
 
         #chat-container {
-            flex: 1;
-            padding: 24px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+            flex: 1; padding: 24px;
+            overflow-y: auto; display: flex;
+            flex-direction: column; gap: 18px;
             scroll-behavior: smooth;
         }
 
         .message {
-            display: flex;
-            flex-direction: column;
-            max-width: 80%;
+            display: flex; flex-direction: column;
+            max-width: 85%;
             animation: fadeIn 0.3s ease-in-out;
         }
-
-        .message.user {
-            align-self: flex-end;
-        }
-
-        .message.ai {
-            align-self: flex-start;
-        }
+        .message.user { align-self: flex-end; }
+        .message.ai { align-self: flex-start; width: 100%; }
 
         .sender-name {
-            font-size: 0.75rem;
-            margin-bottom: 4px;
-            color: var(--fg-color);
-            opacity: 0.7;
+            font-size: 0.75rem; font-weight: 700;
+            margin-bottom: 4px; color: var(--accent-color);
+            opacity: 0.85; letter-spacing: 0.3px;
         }
+        .message.user .sender-name { align-self: flex-end; color: var(--accent-hover); }
 
         .bubble {
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            white-space: pre-wrap;
+            padding: 14px 18px; border-radius: 12px;
+            font-size: 0.92rem; line-height: 1.6;
             word-break: break-word;
         }
-
         .message.user .bubble {
-            background: var(--user-bubble);
+            background: var(--user-bubble); color: #ffffff;
             border-bottom-right-radius: 2px;
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.35);
+            white-space: pre-wrap;
         }
-
         .message.ai .bubble {
             background: var(--ai-bubble);
             border: 1px solid var(--border-color);
             border-bottom-left-radius: 2px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
         }
+
+        /* --- Rich Markdown Styling --- */
+        .md-bold { color: var(--bold-color); font-weight: 700; }
+        .md-italic { color: #cba6f7; font-style: italic; }
+        
+        .md-h2 {
+            color: #89b4fa; font-size: 1.1rem; font-weight: 700;
+            margin: 14px 0 8px 0; border-bottom: 1px solid rgba(137, 180, 250, 0.25);
+            padding-bottom: 4px;
+        }
+        .md-h3 {
+            color: #cba6f7; font-size: 1.02rem; font-weight: 700;
+            margin: 12px 0 6px 0;
+        }
+        .md-h4 {
+            color: #f9e2af; font-size: 0.95rem; font-weight: 700;
+            margin: 10px 0 4px 0;
+        }
+
+        .inline-code {
+            background: var(--inline-code-bg);
+            color: var(--inline-code-fg);
+            padding: 2px 6px; border-radius: 5px;
+            font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+            font-size: 0.86em; border: 1px solid rgba(203, 166, 247, 0.3);
+        }
+
+        .code-card {
+            background: var(--code-bg);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px; margin: 12px 0;
+            overflow: hidden; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+        .code-header {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 6px 14px; display: flex;
+            align-items: center; justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .code-lang {
+            font-size: 0.75rem; font-weight: 700;
+            color: #89b4fa; font-family: monospace; letter-spacing: 0.8px;
+        }
+        .copy-code-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none; color: #cdd6f4;
+            font-size: 0.74rem; padding: 4px 10px;
+            border-radius: 4px; cursor: pointer; transition: all 0.2s;
+        }
+        .copy-code-btn:hover { background: var(--accent-color); color: #11111b; font-weight: 700; }
+        .code-pre {
+            margin: 0; padding: 14px;
+            overflow-x: auto; font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+            font-size: 0.86rem; line-height: 1.5; color: #a6e3a1;
+        }
+
+        .md-li { margin-left: 18px; list-style-type: disc; margin-bottom: 4px; }
+        .badge-alert {
+            padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700;
+            display: inline-block; margin: 2px 0;
+        }
+        .alert-warning { background: rgba(243, 139, 168, 0.2); color: #f38ba8; border: 1px solid #f38ba8; }
+        .alert-info { background: rgba(137, 180, 250, 0.2); color: #89b4fa; border: 1px solid #89b4fa; }
 
         #input-container {
             padding: 16px 24px;
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.25);
             border-top: 1px solid var(--border-color);
-            display: flex;
-            gap: 12px;
+            display: flex; gap: 12px;
         }
 
         textarea {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.05);
+            flex: 1; background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            color: var(--fg-color);
-            padding: 10px 14px;
-            font-family: inherit;
-            font-size: 0.9rem;
-            resize: none;
-            outline: none;
-            min-height: 42px;
-            max-height: 120px;
+            border-radius: 8px; color: var(--fg-color);
+            padding: 10px 14px; font-family: inherit; font-size: 0.9rem;
+            resize: none; outline: none; min-height: 42px; max-height: 120px;
         }
-
-        textarea:focus {
-            border-color: var(--accent-color);
-        }
+        textarea:focus { border-color: var(--accent-color); }
 
         button {
-            background: var(--accent-color);
-            color: #11111b;
-            border: none;
-            border-radius: 8px;
-            padding: 0 20px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
+            background: linear-gradient(135deg, #89b4fa, #cba6f7);
+            color: #11111b; border: none; border-radius: 8px;
+            padding: 0 22px; font-weight: 700; cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
         }
-
-        button:hover {
-            background: var(--accent-hover);
-        }
-
-        .typing-dots {
-            display: inline-flex;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .dot {
-            width: 4px;
-            height: 4px;
-            background: var(--accent-color);
-            border-radius: 50%;
-            animation: pulse 1.4s infinite ease-in-out;
-        }
-
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes pulse {
-            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-            40% { transform: scale(1); opacity: 1; }
-        }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(6px); }
@@ -325,7 +321,7 @@ export class OpenChatCommand {
     <div id="chat-container">
         <div class="message ai">
             <div class="sender-name">Arika</div>
-            <div class="bubble">Welcome to Arika Panel! Type your coding question below.</div>
+            <div class="bubble">Welcome to <strong>Arika Panel</strong>! Type your coding question below.</div>
         </div>
     </div>
     <div id="input-container">
@@ -334,14 +330,94 @@ export class OpenChatCommand {
     </div>
 
     <script>
+        function escapeHtml(str) {
+            return (str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function copyCodeText(btn) {
+            const codeCard = btn.closest('.code-card');
+            const codePre = codeCard.querySelector('code');
+            if (codePre) {
+                navigator.clipboard.writeText(codePre.innerText);
+                const origText = btn.innerText;
+                btn.innerText = 'Copied!';
+                setTimeout(function() { btn.innerText = origText; }, 1500);
+            }
+        }
+
+        function renderRichMarkdown(text) {
+            if (!text) return '';
+
+            const codeBlocks = [];
+            var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
+            var codeBlockRegex = new RegExp(t3 + '(\\\\w*)\\\\n([\\\\s\\\\S]*?)' + t3, 'g');
+
+            let html = text.replace(codeBlockRegex, function(match, lang, code) {
+                const idx = codeBlocks.length;
+                const language = (lang || 'code').toUpperCase();
+                const safeCode = escapeHtml(code.trim());
+                codeBlocks.push(
+                    '<div class="code-card">' +
+                        '<div class="code-header">' +
+                            '<span class="code-lang">' + language + '</span>' +
+                            '<button class="copy-code-btn" onclick="copyCodeText(this)">Copy Code</button>' +
+                        '</div>' +
+                        '<pre class="code-pre"><code>' + safeCode + '</code></pre>' +
+                    '</div>'
+                );
+                return '___CODE_BLOCK_' + idx + '___';
+            });
+
+            var t1 = String.fromCharCode(96);
+            var inlineCodeRegex = new RegExp(t1 + '([^' + t1 + ']+)' + t1, 'g');
+            html = html.replace(inlineCodeRegex, function(m, code) {
+                return '<code class="inline-code">' + escapeHtml(code) + '</code>';
+            });
+
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
+            html = html.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
+            html = html.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
+
+            // Bold
+            html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
+            html = html.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
+
+            // Italics
+            html = html.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
+
+            // Badges / Alerts
+            html = html.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
+            html = html.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
+
+            // Lists
+            html = html.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
+
+            // Newlines
+            html = html.replace(/\\n\\n/g, '<br/><br/>');
+            html = html.replace(/\\n/g, '<br/>');
+
+            // Restore Code Blocks
+            codeBlocks.forEach(function(block, i) {
+                html = html.replace('___CODE_BLOCK_' + i + '___', block);
+            });
+
+            return html;
+        }
+
         const vscode = acquireVsCodeApi();
         const chatContainer = document.getElementById('chat-container');
         const promptInput = document.getElementById('prompt-input');
         const sendBtn = document.getElementById('send-btn');
 
-        function appendMessage(sender, text, isUser) {
+        function appendMessage(sender, rawText, isUser) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = \`message \${isUser ? 'user' : 'ai'}\`;
+            msgDiv.className = 'message ' + (isUser ? 'user' : 'ai');
             
             const nameDiv = document.createElement('div');
             nameDiv.className = 'sender-name';
@@ -349,7 +425,11 @@ export class OpenChatCommand {
 
             const bubbleDiv = document.createElement('div');
             bubbleDiv.className = 'bubble';
-            bubbleDiv.textContent = text;
+            if (isUser) {
+                bubbleDiv.textContent = rawText;
+            } else {
+                bubbleDiv.innerHTML = renderRichMarkdown(rawText);
+            }
 
             msgDiv.appendChild(nameDiv);
             msgDiv.appendChild(bubbleDiv);
@@ -358,47 +438,51 @@ export class OpenChatCommand {
             return bubbleDiv;
         }
 
-        sendBtn.addEventListener('click', () => {
+        sendBtn.addEventListener('click', function() {
             const text = promptInput.value.trim();
             if (text) {
                 appendMessage('You', text, true);
-                vscode.postMessage({ command: 'sendMessage', text });
+                vscode.postMessage({ command: 'sendMessage', text: text });
                 promptInput.value = '';
                 promptInput.style.height = 'auto';
             }
         });
 
-        promptInput.addEventListener('keydown', (e) => {
+        promptInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendBtn.click();
             }
         });
 
-        promptInput.addEventListener('input', () => {
+        promptInput.addEventListener('input', function() {
             promptInput.style.height = 'auto';
             promptInput.style.height = promptInput.scrollHeight + 'px';
         });
 
         let currentStreamBubble = null;
+        let currentStreamRawText = '';
 
-        window.addEventListener('message', (event) => {
+        window.addEventListener('message', function(event) {
             const message = event.data;
             switch (message.command) {
                 case 'appendUserMessage':
                     appendMessage('You', message.text, true);
                     break;
                 case 'startStream':
+                    currentStreamRawText = '';
                     currentStreamBubble = appendMessage(message.sender || 'Arika', '', false);
                     break;
                 case 'streamChunk':
                     if (currentStreamBubble) {
-                        currentStreamBubble.textContent += message.text;
-                        scrollToBottom();
+                        currentStreamRawText += message.text;
+                        currentStreamBubble.innerHTML = renderRichMarkdown(currentStreamRawText);
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
                     }
                     break;
                 case 'endStream':
                     currentStreamBubble = null;
+                    currentStreamRawText = '';
                     break;
             }
         });

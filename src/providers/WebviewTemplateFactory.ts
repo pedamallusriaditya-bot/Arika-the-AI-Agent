@@ -3,7 +3,7 @@
  */
 export class WebviewTemplateFactory {
     /**
-     * Generates Sidebar Webview HTML content.
+     * Generates Sidebar Webview HTML content with rich Markdown & Code Block rendering.
      */
     public static getSidebarHtml(title: string = 'Arika'): string {
         return `<!DOCTYPE html>
@@ -16,16 +16,20 @@ export class WebviewTemplateFactory {
         :root {
             --bg-color: var(--vscode-sideBar-background, #1e1e2e);
             --fg-color: var(--vscode-sideBar-foreground, #cdd6f4);
-            --border-color: var(--vscode-sideBar-border, rgba(255, 255, 255, 0.1));
+            --border-color: var(--vscode-sideBar-border, rgba(255, 255, 255, 0.12));
             --input-bg: var(--vscode-input-background, #181825);
             --input-fg: var(--vscode-input-foreground, #cdd6f4);
             --input-border: var(--vscode-input-border, rgba(255, 255, 255, 0.15));
             --user-msg-bg: linear-gradient(135deg, #6c5ce7, #89b4fa);
             --user-msg-fg: #ffffff;
-            --assistant-msg-bg: rgba(255, 255, 255, 0.05);
-            --assistant-msg-border: rgba(137, 180, 250, 0.2);
+            --assistant-msg-bg: rgba(255, 255, 255, 0.04);
+            --assistant-msg-border: rgba(137, 180, 250, 0.25);
             --accent-color: #89b4fa;
             --accent-hover: #b4befe;
+            --code-bg: #11111b;
+            --bold-color: #f5e0dc;
+            --inline-code-fg: #cba6f7;
+            --inline-code-bg: rgba(203, 166, 247, 0.15);
         }
 
         * { box-sizing: border-box; }
@@ -38,9 +42,10 @@ export class WebviewTemplateFactory {
             height: 100vh; overflow: hidden;
         }
 
+        /* Header Bar */
         .header {
             padding: 12px 14px;
-            background: rgba(0, 0, 0, 0.15);
+            background: rgba(0, 0, 0, 0.2);
             border-bottom: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
         }
@@ -66,45 +71,115 @@ export class WebviewTemplateFactory {
         }
         .clear-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
 
+        /* Chat Scroll Area */
         #chat-messages {
             flex: 1; padding: 12px;
             overflow-y: auto; display: flex;
-            flex-direction: column; gap: 12px;
+            flex-direction: column; gap: 14px;
             scroll-behavior: smooth;
         }
 
         .message-row {
             display: flex; flex-direction: column;
-            max-width: 90%;
+            max-width: 92%;
             animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .message-row.user { align-self: flex-end; }
-        .message-row.assistant { align-self: flex-start; }
+        .message-row.assistant { align-self: flex-start; width: 100%; }
 
         .sender-tag {
-            font-size: 0.7rem; font-weight: 600;
-            margin-bottom: 3px; opacity: 0.75; padding-left: 2px;
+            font-size: 0.72rem; font-weight: 700;
+            margin-bottom: 4px; opacity: 0.85; padding-left: 2px;
+            letter-spacing: 0.3px;
         }
         .message-row.user .sender-tag { align-self: flex-end; color: var(--accent-hover); }
         .message-row.assistant .sender-tag { align-self: flex-start; color: var(--accent-color); }
 
         .bubble {
-            padding: 10px 14px; border-radius: 12px;
-            font-size: 0.88rem; line-height: 1.45;
-            word-wrap: break-word; white-space: pre-wrap;
+            padding: 12px 14px; border-radius: 12px;
+            font-size: 0.88rem; line-height: 1.6;
+            word-wrap: break-word;
         }
         .message-row.user .bubble {
             background: var(--user-msg-bg); color: var(--user-msg-fg);
             border-bottom-right-radius: 2px;
-            box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3);
+            box-shadow: 0 3px 10px rgba(108, 92, 231, 0.35);
+            white-space: pre-wrap;
         }
         .message-row.assistant .bubble {
             background-color: var(--assistant-msg-bg);
             border: 1px solid var(--assistant-msg-border);
             border-bottom-left-radius: 2px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
+        /* --- Rich Markdown Styling --- */
+        .md-bold { color: var(--bold-color); font-weight: 700; }
+        .md-italic { color: #cba6f7; font-style: italic; }
+        
+        .md-h2 {
+            color: #89b4fa; font-size: 1.05rem; font-weight: 700;
+            margin: 12px 0 6px 0; border-bottom: 1px solid rgba(137, 180, 250, 0.25);
+            padding-bottom: 4px;
+        }
+        .md-h3 {
+            color: #cba6f7; font-size: 0.98rem; font-weight: 700;
+            margin: 10px 0 4px 0;
+        }
+        .md-h4 {
+            color: #f9e2af; font-size: 0.9rem; font-weight: 700;
+            margin: 8px 0 4px 0;
+        }
+
+        .inline-code {
+            background: var(--inline-code-bg);
+            color: var(--inline-code-fg);
+            padding: 2px 6px; border-radius: 5px;
+            font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+            font-size: 0.84em; border: 1px solid rgba(203, 166, 247, 0.3);
+        }
+
+        /* Code Card Block */
+        .code-card {
+            background: var(--code-bg);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px; margin: 10px 0;
+            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        }
+        .code-header {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 6px 12px; display: flex;
+            align-items: center; justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .code-lang {
+            font-size: 0.72rem; font-weight: 700;
+            color: #89b4fa; font-family: monospace; letter-spacing: 0.8px;
+        }
+        .copy-code-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none; color: #cdd6f4;
+            font-size: 0.72rem; padding: 3px 8px;
+            border-radius: 4px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .copy-code-btn:hover { background: var(--accent-color); color: #11111b; font-weight: 700; }
+        .code-pre {
+            margin: 0; padding: 12px;
+            overflow-x: auto; font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
+            font-size: 0.84rem; line-height: 1.45; color: #a6e3a1;
+        }
+
+        .md-li { margin-left: 16px; list-style-type: disc; margin-bottom: 3px; }
+        .badge-alert {
+            padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700;
+            display: inline-block; margin: 2px 0;
+        }
+        .alert-warning { background: rgba(243, 139, 168, 0.2); color: #f38ba8; border: 1px solid #f38ba8; }
+        .alert-info { background: rgba(137, 180, 250, 0.2); color: #89b4fa; border: 1px solid #89b4fa; }
+
+        /* Typing & Input Controls */
         .typing-indicator {
             display: none; align-self: flex-start;
             padding: 8px 12px; background: var(--assistant-msg-bg);
@@ -167,7 +242,7 @@ export class WebviewTemplateFactory {
     <div id="chat-messages">
         <div class="message-row assistant">
             <div class="sender-tag">Arika</div>
-            <div class="bubble">Welcome to Arika! Ask me anything about your project or type code prompts below.</div>
+            <div class="bubble" id="welcome-bubble">Welcome to <strong>Arika</strong>! Ask me anything about your codebase or request code explanations below.</div>
         </div>
     </div>
 
@@ -186,6 +261,86 @@ export class WebviewTemplateFactory {
     </div>
 
     <script>
+        function escapeHtml(str) {
+            return (str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function copyCodeText(btn) {
+            const codeCard = btn.closest('.code-card');
+            const codePre = codeCard.querySelector('code');
+            if (codePre) {
+                navigator.clipboard.writeText(codePre.innerText);
+                const origText = btn.innerText;
+                btn.innerText = 'Copied!';
+                setTimeout(function() { btn.innerText = origText; }, 1500);
+            }
+        }
+
+        function renderRichMarkdown(text) {
+            if (!text) return '';
+
+            const codeBlocks = [];
+            var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
+            var codeBlockRegex = new RegExp(t3 + '(\\\\w*)\\\\n([\\\\s\\\\S]*?)' + t3, 'g');
+
+            let html = text.replace(codeBlockRegex, function(match, lang, code) {
+                const idx = codeBlocks.length;
+                const language = (lang || 'code').toUpperCase();
+                const safeCode = escapeHtml(code.trim());
+                codeBlocks.push(
+                    '<div class="code-card">' +
+                        '<div class="code-header">' +
+                            '<span class="code-lang">' + language + '</span>' +
+                            '<button class="copy-code-btn" onclick="copyCodeText(this)">Copy Code</button>' +
+                        '</div>' +
+                        '<pre class="code-pre"><code>' + safeCode + '</code></pre>' +
+                    '</div>'
+                );
+                return '___CODE_BLOCK_' + idx + '___';
+            });
+
+            var t1 = String.fromCharCode(96);
+            var inlineCodeRegex = new RegExp(t1 + '([^' + t1 + ']+)' + t1, 'g');
+            html = html.replace(inlineCodeRegex, function(m, code) {
+                return '<code class="inline-code">' + escapeHtml(code) + '</code>';
+            });
+
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
+            html = html.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
+            html = html.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
+
+            // Bold
+            html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
+            html = html.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
+
+            // Italics
+            html = html.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
+
+            // Badges / Alerts
+            html = html.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
+            html = html.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
+
+            // Lists
+            html = html.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
+
+            // Newlines
+            html = html.replace(/\\n\\n/g, '<br/><br/>');
+            html = html.replace(/\\n/g, '<br/>');
+
+            // Restore Code Blocks
+            codeBlocks.forEach(function(block, i) {
+                html = html.replace('___CODE_BLOCK_' + i + '___', block);
+            });
+
+            return html;
+        }
+
         (function() {
             const vscode = acquireVsCodeApi();
             const messagesContainer = document.getElementById('chat-messages');
@@ -199,7 +354,7 @@ export class WebviewTemplateFactory {
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
 
-            function appendMessage(sender, text, isUser) {
+            function appendMessage(sender, rawText, isUser) {
                 const row = document.createElement('div');
                 row.className = 'message-row ' + (isUser ? 'user' : 'assistant');
                 const tag = document.createElement('div');
@@ -207,11 +362,16 @@ export class WebviewTemplateFactory {
                 tag.textContent = sender;
                 const bubble = document.createElement('div');
                 bubble.className = 'bubble';
-                bubble.textContent = text;
+                if (isUser) {
+                    bubble.textContent = rawText;
+                } else {
+                    bubble.innerHTML = renderRichMarkdown(rawText);
+                }
                 row.appendChild(tag);
                 row.appendChild(bubble);
                 messagesContainer.appendChild(row);
                 scrollToBottom();
+                return bubble;
             }
 
             function handleSend() {
@@ -242,6 +402,7 @@ export class WebviewTemplateFactory {
             });
 
             let currentStreamBubble = null;
+            let currentStreamRawText = '';
 
             stopBtn.addEventListener('click', function() {
                 vscode.postMessage({ command: 'cancelRequest' });
@@ -258,6 +419,7 @@ export class WebviewTemplateFactory {
                     case 'startStream':
                         sendBtn.style.display = 'none';
                         stopBtn.style.display = 'block';
+                        currentStreamRawText = '';
                         const row = document.createElement('div');
                         row.className = 'message-row assistant';
                         const tag = document.createElement('div');
@@ -272,12 +434,14 @@ export class WebviewTemplateFactory {
                         break;
                     case 'streamChunk':
                         if (currentStreamBubble) {
-                            currentStreamBubble.textContent += message.text;
+                            currentStreamRawText += message.text;
+                            currentStreamBubble.innerHTML = renderRichMarkdown(currentStreamRawText);
                             scrollToBottom();
                         }
                         break;
                     case 'endStream':
                         currentStreamBubble = null;
+                        currentStreamRawText = '';
                         sendBtn.style.display = 'block';
                         stopBtn.style.display = 'none';
                         break;
