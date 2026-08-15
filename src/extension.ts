@@ -12,6 +12,7 @@ import { ChatSidebarViewProvider } from './providers/chatSidebarProvider';
 import { OpenChatCommand } from './commands/openChat';
 import { ExplainSelectionCommand } from './commands/explainSelection';
 import { ExplainCurrentFileCommand } from './commands/explainCurrentFile';
+import { SetApiKeyCommand } from './commands/setApiKey';
 import { Logger } from './utils/logger';
 
 /**
@@ -26,8 +27,8 @@ export function activate(context: vscode.ExtensionContext): void {
     dotenv.config({ path: path.join(context.extensionPath, '.env') });
 
     try {
-        // Initialize core domain services (Dependency Injection)
-        const aiService = new AIService();
+        // Initialize core domain services with Dependency Injection & Extension Context
+        const aiService = new AIService(context);
         const workspaceScanner = new WorkspaceScanner();
         const contextBuilder = new ContextBuilder();
         const searchService = new SearchService();
@@ -37,8 +38,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
         Logger.info(`[Extension] Enterprise services ready. Active File: ${editorContextService.getActiveFileContext()?.fileName || 'None'}`);
 
-        // Register Webview Sidebar Provider with injected AIService, RepoQAService & ChatMemory
-        const sidebarProvider = new ChatSidebarViewProvider(context.extensionUri, aiService, repoQAService, chatMemory);
+        // Register Webview Sidebar Provider with injected services
+        const sidebarProvider = new ChatSidebarViewProvider(
+            context.extensionUri,
+            aiService,
+            editorContextService,
+            repoQAService,
+            chatMemory
+        );
         const sidebarDisposable = vscode.window.registerWebviewViewProvider(
             ChatSidebarViewProvider.viewType,
             sidebarProvider,
@@ -54,15 +61,17 @@ export function activate(context: vscode.ExtensionContext): void {
             vscode.commands.executeCommand('arika.sidebarView.focus');
         });
 
-        // Register extension commands with injected AIService
+        // Register commands with injected services
+        const setApiKeyDisposable = SetApiKeyCommand.register(context);
         const openChatDisposable = OpenChatCommand.register(context, aiService);
-        const explainSelectionDisposable = ExplainSelectionCommand.register(context, aiService);
-        const explainCurrentFileDisposable = ExplainCurrentFileCommand.register(context, aiService);
+        const explainSelectionDisposable = ExplainSelectionCommand.register(context, aiService, editorContextService);
+        const explainCurrentFileDisposable = ExplainCurrentFileCommand.register(context, aiService, editorContextService);
 
         // Wire disposables to extension lifecycle
         context.subscriptions.push(
             sidebarDisposable,
             focusSidebarDisposable,
+            setApiKeyDisposable,
             openChatDisposable,
             explainSelectionDisposable,
             explainCurrentFileDisposable

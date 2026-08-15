@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IAIService, CurrentFileContext } from './AIService';
-import { ISearchService } from './SearchService';
+import { ISearchService, SearchResult } from './SearchService';
 import { IWorkspaceScanner } from './WorkspaceScanner';
 import { IContextBuilder } from './ContextBuilder';
 import { Logger } from '../utils/logger';
@@ -23,7 +23,7 @@ export class RepoQAService implements IRepoQAService {
     ) {}
 
     /**
-     * Answers repository-wide questions by searching files, building context, and querying OpenAI.
+     * Answers repository-wide questions by searching files, building context, and querying AI service.
      */
     public async askRepo(
         question: string,
@@ -37,7 +37,7 @@ export class RepoQAService implements IRepoQAService {
         const searchTerms = this.extractSearchTerms(question);
         Logger.info(`[RepoQAService] Extracted search terms: ${searchTerms.join(', ')}`);
 
-        // 2. Perform codebase search using SearchService
+        // 2. Perform parallel codebase search using SearchService
         const searchResults = await this.performSearch(searchTerms);
         Logger.info(`[RepoQAService] Search produced ${searchResults.length} ranked matches.`);
 
@@ -108,41 +108,42 @@ Provide concrete architectural insights, file responsibilities, and line referen
     }
 
     /**
-     * Executes parallel searches across terms.
+     * Executes parallel searches across terms using Promise.all.
      */
-    private async performSearch(terms: string[]): Promise<any[]> {
+    private async performSearch(terms: string[]): Promise<SearchResult[]> {
         if (terms.length === 0) {
             return [];
         }
 
-        const allMatches: any[] = [];
-        for (const term of terms) {
-            const results = await this.searchService.search({
+        const searchPromises = terms.map((term) =>
+            this.searchService.search({
                 query: term,
                 type: 'all',
                 maxResults: 10
-            });
-            allMatches.push(...results);
-        }
+            })
+        );
+
+        const resultsArray = await Promise.all(searchPromises);
+        const allMatches: SearchResult[] = resultsArray.flat();
 
         // Deduplicate and rank top 15 results
-        const map = new Map<string, any>();
+        const map = new Map<string, SearchResult>();
         for (const match of allMatches) {
             const key = `${match.filePath}:${match.lineNumber || 0}`;
-            if (!map.has(key) || map.get(key).score < match.score) {
+            if (!map.has(key) || (map.get(key)!.score || 0) < (match.score || 0)) {
                 map.set(key, match);
             }
         }
 
         return Array.from(map.values())
-            .sort((a, b) => b.score - a.score)
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
             .slice(0, 15);
     }
 
     /**
      * Formats search findings into clean readable markdown.
      */
-    private formatSearchResults(results: any[]): string | undefined {
+    private formatSearchResults(results: SearchResult[]): string | undefined {
         if (results.length === 0) {
             return undefined;
         }

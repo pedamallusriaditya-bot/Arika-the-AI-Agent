@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import * as vscode from 'vscode';
+import { AuthenticationError, NetworkError, RateLimitError } from '../errors/ExtensionError';
 import { Logger } from '../utils/logger';
 
 /**
@@ -14,15 +15,29 @@ export interface CurrentFileContext {
 }
 
 /**
+ * Single turn in conversational history.
+ */
+export interface ChatTurn {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+/**
  * Service contract for AI interactions.
  */
 export interface IAIService {
-    ask(prompt: string, context?: CurrentFileContext, cancelToken?: vscode.CancellationToken): Promise<string>;
+    ask(
+        prompt: string,
+        context?: CurrentFileContext,
+        cancelToken?: vscode.CancellationToken,
+        history?: ChatTurn[]
+    ): Promise<string>;
     askStream(
         prompt: string,
         onChunk: (chunk: string) => void,
         context?: CurrentFileContext,
-        cancelToken?: vscode.CancellationToken
+        cancelToken?: vscode.CancellationToken,
+        history?: ChatTurn[]
     ): Promise<string>;
     explainCode(
         code: string,
@@ -31,9 +46,11 @@ export interface IAIService {
         context?: CurrentFileContext,
         cancelToken?: vscode.CancellationToken
     ): Promise<string>;
+    setContext(context: vscode.ExtensionContext): void;
 }
 
 export class AIService implements IAIService {
+    private extensionContext?: vscode.ExtensionContext;
     private groqClient: OpenAI | undefined;
     private geminiClient: GoogleGenerativeAI | undefined;
     private openaiClient: OpenAI | undefined;
@@ -41,14 +58,30 @@ export class AIService implements IAIService {
     private readonly groqModelName: string = 'llama-3.3-70b-versatile';
     private readonly openaiModelName: string = 'gpt-4o-mini';
 
-    constructor() {
+    constructor(context?: vscode.ExtensionContext) {
+        this.extensionContext = context;
         this.initializeClients();
     }
 
-    private initializeClients(): void {
-        const groqKey = process.env.GROQ_API_KEY?.trim();
-        const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
-        const openaiKey = process.env.OPENAI_API_KEY?.trim();
+    public setContext(context: vscode.ExtensionContext): void {
+        this.extensionContext = context;
+        this.initializeClients();
+    }
+
+    public async initializeClients(): Promise<void> {
+        let groqKey = process.env.GROQ_API_KEY?.trim();
+        let geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+        let openaiKey = process.env.OPENAI_API_KEY?.trim();
+
+        if (this.extensionContext?.secrets) {
+            const secretGroq = await this.extensionContext.secrets.get('GROQ_API_KEY');
+            const secretGemini = await this.extensionContext.secrets.get('GEMINI_API_KEY');
+            const secretOpenAI = await this.extensionContext.secrets.get('OPENAI_API_KEY');
+
+            if (secretGroq?.trim()) groqKey = secretGroq.trim();
+            if (secretGemini?.trim()) geminiKey = secretGemini.trim();
+            if (secretOpenAI?.trim()) openaiKey = secretOpenAI.trim();
+        }
 
         if (groqKey) {
             try {
@@ -56,7 +89,7 @@ export class AIService implements IAIService {
                     apiKey: groqKey,
                     baseURL: 'https://api.groq.com/openai/v1'
                 });
-                Logger.info('[AIService] Groq API client initialized successfully with GROQ_API_KEY.');
+                Logger.info('[AIService] Groq API client initialized with GROQ_API_KEY.');
             } catch (error) {
                 Logger.error('[AIService] Failed to initialize Groq API client', error);
                 this.groqClient = undefined;
@@ -65,11 +98,11 @@ export class AIService implements IAIService {
 
         if (geminiKey) {
             if (!geminiKey.startsWith('AIzaSy')) {
-                Logger.warn('[AIService] GEMINI_API_KEY does not start with "AIzaSy". Google AI Studio API keys always begin with "AIzaSy".');
+                Logger.warn('[AIService] GEMINI_API_KEY does not start with "AIzaSy". Google AI Studio keys begin with "AIzaSy".');
             }
             try {
                 this.geminiClient = new GoogleGenerativeAI(geminiKey);
-                Logger.info('[AIService] Google Gemini client initialized successfully.');
+                Logger.info('[AIService] Google Gemini client initialized.');
             } catch (error) {
                 Logger.error('[AIService] Failed to initialize Google Gemini client', error);
                 this.geminiClient = undefined;
@@ -79,7 +112,7 @@ export class AIService implements IAIService {
         if (openaiKey) {
             try {
                 this.openaiClient = new OpenAI({ apiKey: openaiKey });
-                Logger.info('[AIService] OpenAI client initialized successfully with OPENAI_API_KEY.');
+                Logger.info('[AIService] OpenAI client initialized with OPENAI_API_KEY.');
             } catch (error) {
                 Logger.error('[AIService] Failed to initialize OpenAI client', error);
                 this.openaiClient = undefined;
@@ -90,28 +123,36 @@ export class AIService implements IAIService {
     public async ask(
         prompt: string,
         context?: CurrentFileContext,
-        cancelToken?: vscode.CancellationToken
+        cancelToken?: vscode.CancellationToken,
+        history?: ChatTurn[]
     ): Promise<string> {
         let fullResponse = '';
-        await this.askStream(prompt, (chunk) => {
-            fullResponse += chunk;
-        }, context, cancelToken);
+        await this.askStream(
+            prompt,
+            (chunk) => {
+                fullResponse += chunk;
+            },
+            context,
+            cancelToken,
+            history
+        );
         return fullResponse;
     }
 
     /**
-     * Executes a streaming query using Groq (top priority), Gemini, or OpenAI.
+     * Executes a streaming query using Groq (top priority), Gemini, or OpenAI with optional history.
      */
     public async askStream(
         prompt: string,
         onChunk: (chunk: string) => void,
         context?: CurrentFileContext,
-        cancelToken?: vscode.CancellationToken
+        cancelToken?: vscode.CancellationToken,
+        history: ChatTurn[] = []
     ): Promise<string> {
-        Logger.info(`[AIService] Executing streaming prompt (${prompt.length} chars)${context ? ` [${context.fileName}]` : ''}`);
+        Logger.info(`[AIService] Executing streaming prompt (${prompt.length} chars, ${history.length} history turns)${context ? ` [${context.fileName}]` : ''}`);
 
         if (!this.groqClient && !this.geminiClient && !this.openaiClient) {
-            this.initializeClients();
+            await this.initializeClients();
         }
 
         const trimmed = prompt.trim();
@@ -144,27 +185,27 @@ ${fileSnippet}
 
         // Priority 1: Groq API (Ultra-fast Llama 3.3 70B)
         if (this.groqClient) {
-            return this.askOpenAICompatibleStream(this.groqClient, this.groqModelName, 'Groq', systemInstruction, trimmed, onChunk, cancelToken);
+            return this.askOpenAICompatibleStream(this.groqClient, this.groqModelName, 'Groq', systemInstruction, trimmed, history, onChunk, cancelToken);
         }
 
         // Priority 2: Google Gemini API
         if (this.geminiClient) {
-            return this.askGeminiStream(systemInstruction, trimmed, onChunk, cancelToken);
+            return this.askGeminiStream(systemInstruction, trimmed, history, onChunk, cancelToken);
         }
 
         // Priority 3: OpenAI API
         if (this.openaiClient) {
-            return this.askOpenAICompatibleStream(this.openaiClient, this.openaiModelName, 'OpenAI', systemInstruction, trimmed, onChunk, cancelToken);
+            return this.askOpenAICompatibleStream(this.openaiClient, this.openaiModelName, 'OpenAI', systemInstruction, trimmed, history, onChunk, cancelToken);
         }
 
-        const noKeyMsg = '⚠️ No valid AI API Key found. Please set `GROQ_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` in your `.env` file.';
+        const noKeyMsg = '⚠️ No valid AI API Key found. Please set `GROQ_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` in your `.env` file or use `Arika: Set API Key`.';
         Logger.error(`[AIService] ${noKeyMsg}`);
         onChunk(noKeyMsg);
         return noKeyMsg;
     }
 
     /**
-     * Executes real-time token streaming using OpenAI-compatible SDK clients (Groq / OpenAI).
+     * Executes real-time token streaming using OpenAI-compatible SDK clients with multi-turn history.
      */
     private async askOpenAICompatibleStream(
         client: OpenAI,
@@ -172,17 +213,25 @@ ${fileSnippet}
         providerName: string,
         systemInstruction: string,
         userPrompt: string,
+        history: ChatTurn[],
         onChunk: (chunk: string) => void,
         cancelToken?: vscode.CancellationToken
     ): Promise<string> {
         try {
-            Logger.info(`[AIService] Streaming via ${providerName} [${modelName}]...`);
+            Logger.info(`[AIService] Streaming via ${providerName} [${modelName}] with ${history.length} history turns...`);
+
+            const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+                { role: 'system', content: systemInstruction },
+                ...history.map((h) => ({
+                    role: h.role === 'user' ? ('user' as const) : ('assistant' as const),
+                    content: h.content
+                })),
+                { role: 'user', content: userPrompt }
+            ];
+
             const responseStream = await client.chat.completions.create({
                 model: modelName,
-                messages: [
-                    { role: 'system', content: systemInstruction },
-                    { role: 'user', content: userPrompt }
-                ],
+                messages,
                 stream: true,
                 temperature: 0.7
             });
@@ -207,18 +256,20 @@ ${fileSnippet}
             return accumulatedText;
         } catch (error: any) {
             Logger.error(`[AIService] ${providerName} API Exception`, error);
-            const formattedError = this.formatErrorMessage(error, providerName);
+            const typedError = this.wrapTypedError(error, providerName);
+            const formattedError = this.formatErrorMessage(typedError, providerName);
             onChunk(formattedError);
             return formattedError;
         }
     }
 
     /**
-     * Executes real-time token streaming using Google Gemini SDK with automated model fallback.
+     * Executes real-time token streaming using Google Gemini SDK with automated model fallback and history.
      */
     private async askGeminiStream(
         systemInstruction: string,
         userPrompt: string,
+        history: ChatTurn[],
         onChunk: (chunk: string) => void,
         cancelToken?: vscode.CancellationToken
     ): Promise<string> {
@@ -232,6 +283,14 @@ ${fileSnippet}
 
         let lastError: any = null;
 
+        const contents = [
+            ...history.map((h) => ({
+                role: h.role === 'user' ? 'user' : 'model',
+                parts: [{ text: h.content }]
+            })),
+            { role: 'user', parts: [{ text: userPrompt }] }
+        ];
+
         for (const modelName of candidateModels) {
             try {
                 Logger.info(`[AIService] Attempting Gemini stream with model [${modelName}]...`);
@@ -240,7 +299,7 @@ ${fileSnippet}
                     systemInstruction
                 });
 
-                const resultStream = await model.generateContentStream(userPrompt);
+                const resultStream = await model.generateContentStream({ contents });
                 let accumulatedText = '';
 
                 for await (const chunk of resultStream.stream) {
@@ -270,8 +329,9 @@ ${fileSnippet}
             }
         }
 
-        Logger.error('[AIService] Gemini API Exception across all candidate models', lastError);
-        const formattedError = this.formatErrorMessage(lastError, 'Gemini');
+        Logger.error('[AIService] Gemini API Exception across candidate models', lastError);
+        const typedError = this.wrapTypedError(lastError, 'Gemini');
+        const formattedError = this.formatErrorMessage(typedError, 'Gemini');
         onChunk(formattedError);
         return formattedError;
     }
@@ -290,20 +350,30 @@ ${fileSnippet}
         return this.ask(prompt, context, cancelToken);
     }
 
-    private formatErrorMessage(error: any, provider: string): string {
+    private wrapTypedError(error: any, provider: string): Error {
         const msg = error?.message || '';
-        const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
-
-        if (provider === 'Gemini' && geminiKey && !geminiKey.startsWith('AIzaSy')) {
-            return `⚠️ **Invalid Gemini API Key Format**: The \`GEMINI_API_KEY\` in your \`.env\` file does not start with \`AIzaSy...\` (Google AI Studio keys always start with \`AIzaSy...\`).\n\n👉 **How to get a free key:**\n1. Visit [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).\n2. Click **Create API Key** and copy the string starting with \`AIzaSy...\` into your \`.env\` file.`;
-        }
-
         if (error?.status === 401 || msg.includes('401') || msg.includes('API_KEY_INVALID')) {
-            return `⚠️ **${provider} Auth Error**: Invalid or expired API Key. Please check your \`.env\` configuration.`;
+            return new AuthenticationError(`Invalid or missing ${provider} API Key.`, error);
         }
         if (error?.status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
-            return `⚠️ **${provider} Quota / Rate Limit Exceeded**: You have reached the rate limit or run out of credits for ${provider}.`;
+            return new RateLimitError(`${provider} API rate limit or quota exceeded.`, error);
         }
-        return `⚠️ **${provider} Error**: ${msg || 'An unexpected error occurred while communicating with AI service.'}`;
+        if (msg.includes('ENOTFOUND') || msg.includes('ETIMEDOUT') || msg.includes('fetch failed')) {
+            return new NetworkError(`Network connectivity failure communicating with ${provider}.`, error);
+        }
+        return error;
+    }
+
+    private formatErrorMessage(error: any, provider: string): string {
+        if (error instanceof AuthenticationError) {
+            return `⚠️ **${provider} Auth Error**: ${error.message}`;
+        }
+        if (error instanceof RateLimitError) {
+            return `⚠️ **${provider} Quota Exceeded**: ${error.message}`;
+        }
+        if (error instanceof NetworkError) {
+            return `⚠️ **${provider} Network Error**: ${error.message}`;
+        }
+        return `⚠️ **${provider} Error**: ${error?.message || 'An unexpected error occurred.'}`;
     }
 }

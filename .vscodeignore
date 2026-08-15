@@ -4,4 +4,9 @@ src/**
 tsconfig.json
 .gitignore
 .vscodeignore
+.env
+.env.*
+node_modules/**
+package-lock.json
 **/*.map
+*.vsix

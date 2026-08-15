@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { IAIService, CurrentFileContext } from '../services/AIService';
+import { IAIService, ChatTurn } from '../services/AIService';
 import { IRepoQAService } from '../services/RepoQAService';
 import { IChatMemory } from '../services/ChatMemory';
+import { IEditorContextService } from '../services/EditorContextService';
 import { WebviewTemplateFactory } from './WebviewTemplateFactory';
 import { Logger } from '../utils/logger';
 
@@ -12,11 +12,12 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
     private _activeCancellationTokenSource?: vscode.CancellationTokenSource;
 
     /**
-     * Injects extension URI, IAIService, optional IRepoQAService, and optional IChatMemory.
+     * Injects extension URI, IAIService, optional IRepoQAService, IChatMemory, and IEditorContextService.
      */
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private readonly _aiService: IAIService,
+        private readonly _editorContextService: IEditorContextService,
         private readonly _repoQAService?: IRepoQAService,
         private readonly _chatMemory?: IChatMemory
     ) {}
@@ -81,28 +82,16 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    /**
-     * Extracts active editor details into CurrentFileContext.
-     */
-    private _getActiveFileContext(): CurrentFileContext | undefined {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return undefined;
-        }
-
-        const document = editor.document;
-        return {
-            fileName: path.basename(document.fileName),
-            languageId: document.languageId,
-            content: document.getText(),
-            filePath: document.fileName
-        };
-    }
-
     private async _handleUserMessage(userMessage: string): Promise<void> {
         if (!this._view) {
             return;
         }
+
+        // Get prior formatted conversation history turns for LLM multi-turn memory
+        const rawHistory = this._chatMemory ? this._chatMemory.getFormattedHistory() : [];
+        const historyTurns: ChatTurn[] = rawHistory
+            .filter((h) => h.role === 'user' || h.role === 'assistant')
+            .map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content }));
 
         // Record user turn in chat memory
         if (this._chatMemory) {
@@ -117,7 +106,7 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({ command: 'setLoading', loading: true });
         this._view.webview.postMessage({ command: 'startStream', sender: 'Arika' });
 
-        const fileContext = this._getActiveFileContext();
+        const fileContext = this._editorContextService.getActiveFileContext();
         if (fileContext) {
             Logger.info(`[Sidebar] Context extracted for active file: ${fileContext.fileName} (${fileContext.languageId})`);
         }
@@ -136,8 +125,8 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
                 // Delegate to RepoQAService for search-backed repository QA with cancellation support
                 await this._repoQAService.askRepo(userMessage, onChunkCallback, fileContext, cancelToken);
             } else {
-                // Delegate prompt processing to injected AIService with real-time streaming & cancellation support
-                await this._aiService.askStream(userMessage, onChunkCallback, fileContext, cancelToken);
+                // Delegate prompt processing to injected AIService with real-time streaming & multi-turn memory
+                await this._aiService.askStream(userMessage, onChunkCallback, fileContext, cancelToken, historyTurns);
             }
 
             // Record assistant response in chat memory
@@ -154,7 +143,7 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
             this._activeCancellationTokenSource.dispose();
             this._activeCancellationTokenSource = undefined;
             this._view.webview.postMessage({ command: 'endStream' });
-            this._view.webview.postMessage({ command: 'setLoading', loading: false });
+            this._view.webview.postMessage({ command: 'setLoading', false: false });
         }
     }
 }

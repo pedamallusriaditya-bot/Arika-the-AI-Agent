@@ -1,11 +1,22 @@
 /**
- * Decoupled HTML/CSS/JS template generator factory for Arika webviews.
+ * Unified HTML/CSS/JS template generator factory for Arika webviews (Sidebar & Panel).
  */
 export class WebviewTemplateFactory {
     /**
-     * Generates Sidebar Webview HTML content with rich Markdown & Code Block rendering.
+     * Generates Sidebar Webview HTML content.
      */
     public static getSidebarHtml(title: string = 'Arika'): string {
+        return this.generateHtml(title, true);
+    }
+
+    /**
+     * Generates Panel Webview HTML content.
+     */
+    public static getPanelHtml(title: string = 'Arika Panel'): string {
+        return this.generateHtml(title, false);
+    }
+
+    private static generateHtml(title: string, isSidebar: boolean): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -43,9 +54,8 @@ export class WebviewTemplateFactory {
             height: 100vh; overflow: hidden;
         }
 
-        /* Header Bar */
         .header {
-            padding: 12px 14px;
+            padding: 12px 16px;
             background: rgba(0, 0, 0, 0.2);
             border-bottom: 1px solid var(--border-color);
             display: flex; align-items: center; justify-content: space-between;
@@ -72,9 +82,8 @@ export class WebviewTemplateFactory {
         }
         .clear-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
 
-        /* Chat Scroll Area */
         #chat-messages {
-            flex: 1; padding: 12px;
+            flex: 1; padding: ${isSidebar ? '12px' : '20px'};
             overflow-y: auto; display: flex;
             flex-direction: column; gap: 14px;
             scroll-behavior: smooth;
@@ -82,7 +91,7 @@ export class WebviewTemplateFactory {
 
         .message-row {
             display: flex; flex-direction: column;
-            max-width: 92%;
+            max-width: ${isSidebar ? '94%' : '88%'};
             animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .message-row.user { align-self: flex-end; }
@@ -97,7 +106,7 @@ export class WebviewTemplateFactory {
         .message-row.assistant .sender-tag { align-self: flex-start; color: var(--accent-color); }
 
         .bubble {
-            padding: 12px 14px; border-radius: 12px;
+            padding: 12px 16px; border-radius: 12px;
             font-size: 0.88rem; line-height: 1.6;
             word-wrap: break-word;
         }
@@ -114,7 +123,7 @@ export class WebviewTemplateFactory {
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
-        /* --- Rich Markdown Styling --- */
+        /* Rich Markdown Styling */
         .md-bold { color: var(--bold-color); font-weight: 700; }
         .md-italic { color: #cba6f7; font-style: italic; }
         
@@ -189,7 +198,7 @@ export class WebviewTemplateFactory {
         .alert-warning { background: rgba(243, 139, 168, 0.2); color: #f38ba8; border: 1px solid #f38ba8; }
         .alert-info { background: rgba(137, 180, 250, 0.2); color: #89b4fa; border: 1px solid #89b4fa; }
 
-        /* Typing & Input Controls */
+        /* Typing & Controls */
         .typing-indicator {
             display: none; align-self: flex-start;
             padding: 8px 12px; background: var(--assistant-msg-bg);
@@ -207,7 +216,7 @@ export class WebviewTemplateFactory {
         .dot:nth-child(3) { animation-delay: 0.4s; }
 
         .input-area {
-            padding: 10px 12px; background: rgba(0, 0, 0, 0.2);
+            padding: 12px 14px; background: rgba(0, 0, 0, 0.2);
             border-top: 1px solid var(--border-color);
             display: flex; flex-direction: column; gap: 8px;
         }
@@ -215,7 +224,7 @@ export class WebviewTemplateFactory {
         textarea {
             flex: 1; background: var(--input-bg); color: var(--input-fg);
             border: 1px solid var(--input-border); border-radius: 8px;
-            padding: 8px 10px; font-family: inherit; font-size: 0.85rem;
+            padding: 8px 12px; font-family: inherit; font-size: 0.88rem;
             resize: none; outline: none; min-height: 38px; max-height: 120px;
             transition: border-color 0.2s;
         }
@@ -223,7 +232,7 @@ export class WebviewTemplateFactory {
         .send-btn {
             background: linear-gradient(135deg, #89b4fa, #cba6f7);
             color: #11111b; border: none; border-radius: 8px;
-            padding: 8px 14px; font-weight: 700; font-size: 0.85rem;
+            padding: 8px 16px; font-weight: 700; font-size: 0.85rem;
             cursor: pointer; height: 38px; display: flex;
             align-items: center; justify-content: center;
             transition: transform 0.1s, opacity 0.2s;
@@ -370,44 +379,47 @@ export class WebviewTemplateFactory {
                     );
                     html += '%%%CODEBLOCK_' + idx + '%%%';
                 } else {
-                    html += parts[i];
+                    // Escape raw prose HTML FIRST to permanently eliminate XSS vulnerability!
+                    var safeProse = escapeHtml(parts[i]);
+
+                    var t1 = String.fromCharCode(96);
+                    var inlineParts = safeProse.split(t1);
+                    var inlineHtml = '';
+                    for (var j = 0; j < inlineParts.length; j++) {
+                        if (j % 2 === 1) {
+                            inlineHtml += '<code class="inline-code">' + colorizeCode(inlineParts[j]) + '</code>';
+                        } else {
+                            inlineHtml += inlineParts[j];
+                        }
+                    }
+                    safeProse = inlineHtml;
+
+                    // Headers
+                    safeProse = safeProse.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
+                    safeProse = safeProse.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
+                    safeProse = safeProse.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
+
+                    // Bold
+                    safeProse = safeProse.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
+                    safeProse = safeProse.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
+
+                    // Italics
+                    safeProse = safeProse.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
+
+                    // Badges / Alerts
+                    safeProse = safeProse.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
+                    safeProse = safeProse.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
+
+                    // Lists
+                    safeProse = safeProse.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
+
+                    // Newlines
+                    safeProse = safeProse.replace(/\\n\\n/g, '<br/><br/>');
+                    safeProse = safeProse.replace(/\\n/g, '<br/>');
+
+                    html += safeProse;
                 }
             }
-
-            var t1 = String.fromCharCode(96);
-            var inlineParts = html.split(t1);
-            var inlineHtml = '';
-            for (var j = 0; j < inlineParts.length; j++) {
-                if (j % 2 === 1) {
-                    inlineHtml += '<code class="inline-code">' + colorizeCode(inlineParts[j]) + '</code>';
-                } else {
-                    inlineHtml += inlineParts[j];
-                }
-            }
-            html = inlineHtml;
-
-            // Headers
-            html = html.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
-            html = html.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
-            html = html.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
-
-            // Bold
-            html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
-            html = html.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
-
-            // Italics
-            html = html.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
-
-            // Badges / Alerts
-            html = html.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
-            html = html.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
-
-            // Lists
-            html = html.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
-
-            // Newlines
-            html = html.replace(/\\n\\n/g, '<br/><br/>');
-            html = html.replace(/\\n/g, '<br/>');
 
             // Restore Code Blocks
             codeBlocks.forEach(function(block, idx) {
@@ -462,7 +474,6 @@ export class WebviewTemplateFactory {
                 vscode.postMessage({ command: 'sendMessage', text: text });
             }
             
-            // Queue clearing prompt input after all current key dispatches complete
             setTimeout(function() {
                 promptInput.value = '';
                 promptInput.style.height = '38px';
@@ -537,8 +548,8 @@ export class WebviewTemplateFactory {
         window.addEventListener('message', function(event) {
             const message = event.data;
             switch (message.command) {
-                case 'receiveMessage':
-                    appendMessage(message.sender, message.text, false);
+                case 'appendUserMessage':
+                    appendMessage('You', message.text, true);
                     break;
                 case 'startStream':
                     if (sendBtn) sendBtn.style.display = 'none';

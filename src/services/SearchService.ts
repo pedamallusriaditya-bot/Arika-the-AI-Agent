@@ -29,6 +29,7 @@ export interface ISearchService {
     searchFilename(pattern: string, maxResults?: number): Promise<SearchResult[]>;
     searchSymbol(symbolName: string, languages?: SupportedLanguage[], maxResults?: number): Promise<SearchResult[]>;
     searchKeyword(keyword: string, maxResults?: number): Promise<SearchResult[]>;
+    clearCache(): void;
 }
 
 export class SearchService implements ISearchService {
@@ -39,11 +40,25 @@ export class SearchService implements ISearchService {
         'build',
         'out',
         '.vscode',
+        '.vscode-test',
         '.next',
         '.DS_Store',
         'coverage',
         'tmp'
     ]);
+
+    private readonly defaultIgnoredFiles: Set<string> = new Set([
+        '.env',
+        '.env.local',
+        '.env.production',
+        'package-lock.json',
+        'yarn.lock'
+    ]);
+
+    /**
+     * In-memory cache for file contents to avoid disk I/O bottlenecks.
+     */
+    private readonly fileCache = new Map<string, { content: string; mtimeMs: number }>();
 
     /**
      * Regex matchers for symbols in supported programming languages.
@@ -75,6 +90,30 @@ export class SearchService implements ISearchService {
             /(?:[A-Za-z0-9_]+[\s\*]+)+([A-Za-z0-9_]+)\s*\([^;]*\)\s*\{/g
         ]
     };
+
+    constructor() {
+        this.registerFileWatchers();
+    }
+
+    public clearCache(): void {
+        this.fileCache.clear();
+        Logger.info('[SearchService] Search file cache cleared.');
+    }
+
+    private registerFileWatchers(): void {
+        try {
+            vscode.workspace.onDidSaveTextDocument((doc) => {
+                this.fileCache.delete(doc.fileName);
+            });
+            vscode.workspace.onDidDeleteFiles((e) => {
+                for (const f of e.files) {
+                    this.fileCache.delete(f.fsPath);
+                }
+            });
+        } catch {
+            // Ignore when running outside extension host
+        }
+    }
 
     /**
      * Executes unified search across filename, symbol, and keyword strategies.
@@ -123,11 +162,9 @@ export class SearchService implements ISearchService {
                     continue;
                 }
 
-                // Read file content for Symbol & Keyword searches
-                let fileContent = '';
-                try {
-                    fileContent = await fs.promises.readFile(file.path, 'utf-8');
-                } catch {
+                // Read cached or fresh file content for Symbol & Keyword searches
+                const fileContent = await this.getFileContentCached(file.path);
+                if (!fileContent) {
                     continue;
                 }
 
@@ -163,6 +200,23 @@ export class SearchService implements ISearchService {
         // Sort by score descending and deduplicate
         const deduplicated = this.deduplicateAndRank(allResults);
         return deduplicated.slice(0, maxResults);
+    }
+
+    private async getFileContentCached(filePath: string): Promise<string | undefined> {
+        try {
+            const stat = await fs.promises.stat(filePath);
+            const cached = this.fileCache.get(filePath);
+
+            if (cached && cached.mtimeMs === stat.mtimeMs) {
+                return cached.content;
+            }
+
+            const content = await fs.promises.readFile(filePath, 'utf-8');
+            this.fileCache.set(filePath, { content, mtimeMs: stat.mtimeMs });
+            return content;
+        } catch {
+            return undefined;
+        }
     }
 
     public async searchFilename(pattern: string, maxResults: number = 50): Promise<SearchResult[]> {
@@ -201,7 +255,7 @@ export class SearchService implements ISearchService {
             }
 
             for (const entry of entries) {
-                if (this.defaultIgnoredDirectories.has(entry.name)) {
+                if (this.defaultIgnoredDirectories.has(entry.name) || this.defaultIgnoredFiles.has(entry.name)) {
                     continue;
                 }
 
