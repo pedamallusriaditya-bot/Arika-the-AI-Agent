@@ -136,6 +136,7 @@ export class OpenChatCommand {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
     <title>Arika Chat</title>
     <style>
         :root {
@@ -336,10 +337,17 @@ export class OpenChatCommand {
     </div>
     <div id="input-container">
         <textarea id="prompt-input" placeholder="Ask Arika anything..." rows="1"></textarea>
-        <button id="send-btn" type="button">Send</button>
+        <button id="send-btn" type="button" onclick="handleSend(); return false;">Send</button>
     </div>
 
     <script>
+        let vscode;
+        try {
+            vscode = acquireVsCodeApi();
+        } catch (e) {
+            console.warn('[Arika Webview] acquireVsCodeApi fallback', e);
+        }
+
         function escapeHtml(str) {
             return (str || '')
                 .replace(/&/g, '&amp;')
@@ -480,10 +488,13 @@ export class OpenChatCommand {
             return html;
         }
 
-        const vscode = acquireVsCodeApi();
         const chatContainer = document.getElementById('chat-container');
         const promptInput = document.getElementById('prompt-input');
         const sendBtn = document.getElementById('send-btn');
+
+        function scrollToBottom() {
+            if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
 
         function appendMessage(sender, rawText, isUser) {
             const msgDiv = document.createElement('div');
@@ -504,38 +515,73 @@ export class OpenChatCommand {
             msgDiv.appendChild(nameDiv);
             msgDiv.appendChild(bubbleDiv);
             chatContainer.appendChild(msgDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            scrollToBottom();
             return bubbleDiv;
         }
 
         function handleSend() {
-            const text = promptInput.value.trim();
+            if (!promptInput) return;
+            const rawText = promptInput.value;
+            const text = rawText.trim();
             if (!text) return;
+
             appendMessage('You', text, true);
-            vscode.postMessage({ command: 'sendMessage', text: text });
-            promptInput.value = '';
-            promptInput.style.height = '42px';
-            promptInput.focus();
+            if (vscode) {
+                vscode.postMessage({ command: 'sendMessage', text: text });
+            }
+
+            setTimeout(function() {
+                promptInput.value = '';
+                promptInput.style.height = '42px';
+                promptInput.focus();
+            }, 0);
         }
 
-        sendBtn.addEventListener('click', function(e) {
-            if (e) e.preventDefault();
-            handleSend();
-        });
-
-        promptInput.addEventListener('keydown', function(e) {
-            if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
-                e.preventDefault();
-                e.stopPropagation();
+        if (sendBtn) {
+            sendBtn.onclick = function(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 handleSend();
                 return false;
-            }
-        });
+            };
+        }
 
-        promptInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-        });
+        if (promptInput) {
+            promptInput.addEventListener('keydown', function(e) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSend();
+                    return false;
+                }
+            });
+
+            promptInput.addEventListener('keypress', function(e) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+
+            promptInput.addEventListener('keyup', function(e) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (promptInput.value.indexOf('\\n') !== -1 || promptInput.value.indexOf('\\r') !== -1) {
+                        promptInput.value = promptInput.value.replace(/[\\r\\n]+/g, '');
+                    }
+                    return false;
+                }
+            });
+
+            promptInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
+        }
 
         let currentStreamBubble = null;
         let currentStreamRawText = '';
@@ -554,7 +600,7 @@ export class OpenChatCommand {
                     if (currentStreamBubble) {
                         currentStreamRawText += message.text;
                         currentStreamBubble.innerHTML = renderRichMarkdown(currentStreamRawText);
-                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                        scrollToBottom();
                     }
                     break;
                 case 'endStream':

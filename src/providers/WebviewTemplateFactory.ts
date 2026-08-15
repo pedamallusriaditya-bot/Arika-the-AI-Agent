@@ -11,6 +11,7 @@ export class WebviewTemplateFactory {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
     <title>${title}</title>
     <style>
         :root {
@@ -264,12 +265,19 @@ export class WebviewTemplateFactory {
     <div class="input-area">
         <div class="input-wrapper">
             <textarea id="prompt-input" placeholder="Ask Arika..." rows="1"></textarea>
-            <button class="send-btn" id="send-btn" type="button">Send</button>
+            <button class="send-btn" id="send-btn" type="button" onclick="handleSend(); return false;">Send</button>
             <button class="send-btn" id="stop-btn" type="button" style="display:none; background: #f38ba8; color: #11111b;">Stop</button>
         </div>
     </div>
 
     <script>
+        let vscode;
+        try {
+            vscode = acquireVsCodeApi();
+        } catch (e) {
+            console.warn('[Arika Webview] acquireVsCodeApi fallback', e);
+        }
+
         function escapeHtml(str) {
             return (str || '')
                 .replace(/&/g, '&amp;')
@@ -410,54 +418,70 @@ export class WebviewTemplateFactory {
             return html;
         }
 
-        (function() {
-            const vscode = acquireVsCodeApi();
-            const messagesContainer = document.getElementById('chat-messages');
-            const promptInput = document.getElementById('prompt-input');
-            const sendBtn = document.getElementById('send-btn');
-            const stopBtn = document.getElementById('stop-btn');
-            const clearBtn = document.getElementById('clear-btn');
-            const typingIndicator = document.getElementById('typing-indicator');
+        const messagesContainer = document.getElementById('chat-messages');
+        const promptInput = document.getElementById('prompt-input');
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
 
-            function scrollToBottom() {
+        function scrollToBottom() {
+            if (messagesContainer) {
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
+        }
 
-            function appendMessage(sender, rawText, isUser) {
-                const row = document.createElement('div');
-                row.className = 'message-row ' + (isUser ? 'user' : 'assistant');
-                const tag = document.createElement('div');
-                tag.className = 'sender-tag';
-                tag.textContent = sender;
-                const bubble = document.createElement('div');
-                bubble.className = 'bubble';
-                if (isUser) {
-                    bubble.textContent = rawText;
-                } else {
-                    bubble.innerHTML = renderRichMarkdown(rawText);
-                }
-                row.appendChild(tag);
-                row.appendChild(bubble);
-                messagesContainer.appendChild(row);
-                scrollToBottom();
-                return bubble;
+        function appendMessage(sender, rawText, isUser) {
+            const row = document.createElement('div');
+            row.className = 'message-row ' + (isUser ? 'user' : 'assistant');
+            const tag = document.createElement('div');
+            tag.className = 'sender-tag';
+            tag.textContent = sender;
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            if (isUser) {
+                bubble.textContent = rawText;
+            } else {
+                bubble.innerHTML = renderRichMarkdown(rawText);
             }
+            row.appendChild(tag);
+            row.appendChild(bubble);
+            messagesContainer.appendChild(row);
+            scrollToBottom();
+            return bubble;
+        }
 
-            function handleSend() {
-                const text = promptInput.value.trim();
-                if (!text) return;
-                appendMessage('You', text, true);
+        function handleSend() {
+            if (!promptInput) return;
+            const rawText = promptInput.value;
+            const text = rawText.trim();
+            if (!text) return;
+            
+            appendMessage('You', text, true);
+            if (vscode) {
                 vscode.postMessage({ command: 'sendMessage', text: text });
+            }
+            
+            // Queue clearing prompt input after all current key dispatches complete
+            setTimeout(function() {
                 promptInput.value = '';
                 promptInput.style.height = '38px';
                 promptInput.focus();
-            }
+            }, 0);
+        }
 
-            sendBtn.addEventListener('click', function(e) {
-                if (e) e.preventDefault();
+        if (sendBtn) {
+            sendBtn.onclick = function(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 handleSend();
-            });
+                return false;
+            };
+        }
 
+        if (promptInput) {
             promptInput.addEventListener('keydown', function(e) {
                 if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
                     e.preventDefault();
@@ -467,73 +491,96 @@ export class WebviewTemplateFactory {
                 }
             });
 
+            promptInput.addEventListener('keypress', function(e) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            });
+
+            promptInput.addEventListener('keyup', function(e) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (promptInput.value.indexOf('\\n') !== -1 || promptInput.value.indexOf('\\r') !== -1) {
+                        promptInput.value = promptInput.value.replace(/[\\r\\n]+/g, '');
+                    }
+                    return false;
+                }
+            });
+
             promptInput.addEventListener('input', function() {
                 this.style.height = 'auto';
                 this.style.height = Math.min(this.scrollHeight, 120) + 'px';
             });
+        }
 
-            clearBtn.addEventListener('click', function() {
-                messagesContainer.innerHTML = '';
-                vscode.postMessage({ command: 'clearHistory' });
-            });
+        if (clearBtn) {
+            clearBtn.onclick = function() {
+                if (messagesContainer) messagesContainer.innerHTML = '';
+                if (vscode) vscode.postMessage({ command: 'clearHistory' });
+            };
+        }
 
-            let currentStreamBubble = null;
-            let currentStreamRawText = '';
+        let currentStreamBubble = null;
+        let currentStreamRawText = '';
 
-            stopBtn.addEventListener('click', function() {
-                vscode.postMessage({ command: 'cancelRequest' });
-                sendBtn.style.display = 'flex';
+        if (stopBtn) {
+            stopBtn.onclick = function() {
+                if (vscode) vscode.postMessage({ command: 'cancelRequest' });
+                if (sendBtn) sendBtn.style.display = 'flex';
                 stopBtn.style.display = 'none';
-            });
+            };
+        }
 
-            window.addEventListener('message', function(event) {
-                const message = event.data;
-                switch (message.command) {
-                    case 'receiveMessage':
-                        appendMessage(message.sender, message.text, false);
-                        break;
-                    case 'startStream':
-                        sendBtn.style.display = 'none';
-                        stopBtn.style.display = 'flex';
-                        currentStreamRawText = '';
-                        const row = document.createElement('div');
-                        row.className = 'message-row assistant';
-                        const tag = document.createElement('div');
-                        tag.className = 'sender-tag';
-                        tag.textContent = message.sender || 'Arika';
-                        currentStreamBubble = document.createElement('div');
-                        currentStreamBubble.className = 'bubble';
-                        row.appendChild(tag);
-                        row.appendChild(currentStreamBubble);
-                        messagesContainer.appendChild(row);
+        window.addEventListener('message', function(event) {
+            const message = event.data;
+            switch (message.command) {
+                case 'receiveMessage':
+                    appendMessage(message.sender, message.text, false);
+                    break;
+                case 'startStream':
+                    if (sendBtn) sendBtn.style.display = 'none';
+                    if (stopBtn) stopBtn.style.display = 'flex';
+                    currentStreamRawText = '';
+                    const row = document.createElement('div');
+                    row.className = 'message-row assistant';
+                    const tag = document.createElement('div');
+                    tag.className = 'sender-tag';
+                    tag.textContent = message.sender || 'Arika';
+                    currentStreamBubble = document.createElement('div');
+                    currentStreamBubble.className = 'bubble';
+                    row.appendChild(tag);
+                    row.appendChild(currentStreamBubble);
+                    messagesContainer.appendChild(row);
+                    scrollToBottom();
+                    break;
+                case 'streamChunk':
+                    if (currentStreamBubble) {
+                        currentStreamRawText += message.text;
+                        currentStreamBubble.innerHTML = renderRichMarkdown(currentStreamRawText);
                         scrollToBottom();
-                        break;
-                    case 'streamChunk':
-                        if (currentStreamBubble) {
-                            currentStreamRawText += message.text;
-                            currentStreamBubble.innerHTML = renderRichMarkdown(currentStreamRawText);
-                            scrollToBottom();
-                        }
-                        break;
-                    case 'endStream':
-                        currentStreamBubble = null;
-                        currentStreamRawText = '';
-                        sendBtn.style.display = 'flex';
-                        stopBtn.style.display = 'none';
-                        break;
-                    case 'setLoading':
-                        if (message.loading) {
-                            typingIndicator.classList.add('active');
-                        } else {
-                            typingIndicator.classList.remove('active');
-                            sendBtn.style.display = 'flex';
-                            stopBtn.style.display = 'none';
-                        }
-                        scrollToBottom();
-                        break;
-                }
-            });
-        })();
+                    }
+                    break;
+                case 'endStream':
+                    currentStreamBubble = null;
+                    currentStreamRawText = '';
+                    if (sendBtn) sendBtn.style.display = 'flex';
+                    if (stopBtn) stopBtn.style.display = 'none';
+                    break;
+                case 'setLoading':
+                    if (message.loading) {
+                        if (typingIndicator) typingIndicator.classList.add('active');
+                    } else {
+                        if (typingIndicator) typingIndicator.classList.remove('active');
+                        if (sendBtn) sendBtn.style.display = 'flex';
+                        if (stopBtn) stopBtn.style.display = 'none';
+                    }
+                    scrollToBottom();
+                    break;
+            }
+        });
     </script>
 </body>
 </html>`;
