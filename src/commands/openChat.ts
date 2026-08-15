@@ -320,7 +320,7 @@ export class OpenChatCommand {
     </header>
     <div id="chat-container">
         <div class="message ai">
-            <div class="sender-name">Arika</div>
+            <div class="sender-tag">Arika</div>
             <div class="bubble">Welcome to <strong>Arika Panel</strong>! Type your coding question below.</div>
         </div>
     </div>
@@ -357,6 +357,7 @@ export class OpenChatCommand {
             var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
             var codeBlockRegex = new RegExp(t3 + '([a-zA-Z0-9_+-]*)[\\\\r\\\\n]+([\\\\s\\\\S]*?)(?:' + t3 + '|$)', 'g');
 
+            // Use %%%CODEBLOCK_i%%% as placeholder (zero underscores to prevent clash with bold __text__ regex!)
             let html = text.replace(codeBlockRegex, function(match, lang, code) {
                 const idx = codeBlocks.length;
                 const language = (lang || 'code').toUpperCase();
@@ -370,7 +371,7 @@ export class OpenChatCommand {
                         '<pre class="code-pre"><code>' + safeCode + '</code></pre>' +
                     '</div>'
                 );
-                return '___CODE_BLOCK_' + idx + '___';
+                return '%%%CODEBLOCK_' + idx + '%%%';
             });
 
             var t1 = String.fromCharCode(96);
@@ -402,9 +403,9 @@ export class OpenChatCommand {
             html = html.replace(/\\n\\n/g, '<br/><br/>');
             html = html.replace(/\\n/g, '<br/>');
 
-            // Restore Code Blocks using split and join to prevent $ regex replacement pattern bugs
+            // Restore Code Blocks using split and join
             codeBlocks.forEach(function(block, i) {
-                const placeholder = '___CODE_BLOCK_' + i + '___';
+                const placeholder = '%%%CODEBLOCK_' + i + '%%%';
                 html = html.split(placeholder).join(block);
             });
 
