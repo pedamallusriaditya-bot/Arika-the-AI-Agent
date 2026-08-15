@@ -247,6 +247,7 @@ export class OpenChatCommand {
             font-size: 0.86em; border: 1px solid rgba(203, 166, 247, 0.3);
         }
 
+        /* --- Code Card Block & Vivid Antigravity Syntax Colors --- */
         .code-card {
             background: var(--code-bg);
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -273,8 +274,17 @@ export class OpenChatCommand {
         .code-pre {
             margin: 0; padding: 14px;
             overflow-x: auto; font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
-            font-size: 0.86rem; line-height: 1.5; color: #a6e3a1;
+            font-size: 0.86rem; line-height: 1.5; color: #cdd6f4;
         }
+
+        /* Syntax Highlight Tokens */
+        .syn-keyword { color: #f38ba8; font-weight: 700; }  /* Pink/Red Control Flow */
+        .syn-type { color: #f9e2af; font-weight: 600; }     /* Gold Types/Structs */
+        .syn-func { color: #89b4fa; font-weight: 600; }     /* Sapphire Functions */
+        .syn-string { color: #a6e3a1; }                    /* Emerald Strings */
+        .syn-number { color: #fab387; }                    /* Peach Numbers */
+        .syn-comment { color: #6c7086; font-style: italic; }/* Slate Grey Comments */
+        .syn-operator { color: #89dceb; font-weight: 700; } /* Sky Blue Operators */
 
         .md-li { margin-left: 18px; list-style-type: disc; margin-bottom: 4px; }
         .badge-alert {
@@ -350,6 +360,55 @@ export class OpenChatCommand {
             }
         }
 
+        function colorizeCode(code) {
+            // Fix invalid unicode math symbols into valid C/C++ operators
+            let c = code
+                .replace(/≠/g, '!=')
+                .replace(/→/g, '->')
+                .replace(/≤/g, '<=')
+                .replace(/≥/g, '>=');
+
+            let safe = escapeHtml(c);
+
+            // Extract comments first
+            const comments = [];
+            safe = safe.replace(/(\\/\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)/g, function(m) {
+                const i = comments.length;
+                comments.push('<span class="syn-comment">' + m + '</span>');
+                return '___COMMENT_' + i + '___';
+            });
+
+            // Extract strings
+            const strings = [];
+            safe = safe.replace(/("([^"\\\\]|\\\\.)*"|'([^'\\\\]|\\\\.)*')/g, function(m) {
+                const i = strings.length;
+                strings.push('<span class="syn-string">' + m + '</span>');
+                return '___STRING_' + i + '___';
+            });
+
+            // Colorize C/C++/Java/TS Keywords
+            const keywords = /\\b(void|int|char|float|double|long|short|unsigned|signed|struct|enum|union|typedef|if|else|while|for|do|return|break|continue|switch|case|default|const|static|volatile|extern|inline|public|private|protected|class|template|typename|using|namespace|new|delete|try|catch|throw|auto|async|await|function|let|var|import|export|from)\\b/g;
+            safe = safe.replace(keywords, '<span class="syn-keyword">$1</span>');
+
+            // Types & Constants
+            safe = safe.replace(/\\b(Node|NULL|RED|BLACK|true|false|TRUE|FALSE|nullptr|std|size_t)\\b/g, '<span class="syn-type">$1</span>');
+
+            // Operators (-> and != and ==)
+            safe = safe.replace(/(-&gt;|!=|==|=&gt;)/g, '<span class="syn-operator">$1</span>');
+
+            // Function calls
+            safe = safe.replace(/\\b([a-zA-Z_]\\w*)(?=\\s*\\()/g, '<span class="syn-func">$1</span>');
+
+            // Numbers
+            safe = safe.replace(/\\b(\\d+(\\.\\d+)?)\\b/g, '<span class="syn-number">$1</span>');
+
+            // Restore strings and comments using split/join
+            strings.forEach(function(s, i) { safe = safe.split('___STRING_' + i + '___').join(s); });
+            comments.forEach(function(cm, i) { safe = safe.split('___COMMENT_' + i + '___').join(cm); });
+
+            return safe;
+        }
+
         function renderRichMarkdown(text) {
             if (!text) return '';
 
@@ -357,18 +416,17 @@ export class OpenChatCommand {
             var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
             var codeBlockRegex = new RegExp(t3 + '([a-zA-Z0-9_+-]*)[\\\\r\\\\n]+([\\\\s\\\\S]*?)(?:' + t3 + '|$)', 'g');
 
-            // Use %%%CODEBLOCK_i%%% as placeholder (zero underscores to prevent clash with bold __text__ regex!)
             let html = text.replace(codeBlockRegex, function(match, lang, code) {
                 const idx = codeBlocks.length;
                 const language = (lang || 'code').toUpperCase();
-                const safeCode = escapeHtml(code.trim());
+                const colorizedCode = colorizeCode(code.trim());
                 codeBlocks.push(
                     '<div class="code-card">' +
                         '<div class="code-header">' +
                             '<span class="code-lang">' + language + '</span>' +
                             '<button class="copy-code-btn" onclick="copyCodeText(this)">Copy Code</button>' +
                         '</div>' +
-                        '<pre class="code-pre"><code>' + safeCode + '</code></pre>' +
+                        '<pre class="code-pre"><code>' + colorizedCode + '</code></pre>' +
                     '</div>'
                 );
                 return '%%%CODEBLOCK_' + idx + '%%%';
@@ -377,7 +435,7 @@ export class OpenChatCommand {
             var t1 = String.fromCharCode(96);
             var inlineCodeRegex = new RegExp(t1 + '([^' + t1 + ']+)' + t1, 'g');
             html = html.replace(inlineCodeRegex, function(m, code) {
-                return '<code class="inline-code">' + escapeHtml(code) + '</code>';
+                return '<code class="inline-code">' + colorizeCode(code) + '</code>';
             });
 
             // Headers
@@ -459,7 +517,7 @@ export class OpenChatCommand {
 
         promptInput.addEventListener('input', function() {
             promptInput.style.height = 'auto';
-            promptInput.style.height = promptInput.scrollHeight + 'px';
+            promptInput.style.height = Math.min(this.scrollHeight, 120) + 'px';
         });
 
         let currentStreamBubble = null;

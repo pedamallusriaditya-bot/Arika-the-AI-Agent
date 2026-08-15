@@ -121,7 +121,7 @@ export class AIService implements IAIService {
             return emptyPromptMsg;
         }
 
-        let systemInstruction = 'You are Arika, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
+        let systemInstruction = 'You are Arika, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks. CRITICAL CODE DIRECTIVE: ALWAYS output standard, valid, compilable code. NEVER use mathematical Unicode symbols in code blocks (e.g., use != instead of ≠, use -> instead of →, use <= instead of ≤, use >= instead of ≥).';
 
         if (context) {
             const maxLen = 4000;
