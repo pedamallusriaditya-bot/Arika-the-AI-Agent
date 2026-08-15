@@ -245,7 +245,7 @@ export class WebviewTemplateFactory {
             <span class="status-dot"></span>
             <span>${title}</span>
         </div>
-        <button class="clear-btn" id="clear-btn" title="Clear Chat">Clear</button>
+        <button class="clear-btn" id="clear-btn" type="button" title="Clear Chat">Clear</button>
     </div>
 
     <div id="chat-messages">
@@ -264,8 +264,8 @@ export class WebviewTemplateFactory {
     <div class="input-area">
         <div class="input-wrapper">
             <textarea id="prompt-input" placeholder="Ask Arika..." rows="1"></textarea>
-            <button class="send-btn" id="send-btn">Send</button>
-            <button class="send-btn" id="stop-btn" style="display:none; background: #f38ba8; color: #11111b;">Stop</button>
+            <button class="send-btn" id="send-btn" type="button">Send</button>
+            <button class="send-btn" id="stop-btn" type="button" style="display:none; background: #f38ba8; color: #11111b;">Stop</button>
         </div>
     </div>
 
@@ -291,7 +291,6 @@ export class WebviewTemplateFactory {
         }
 
         function colorizeCode(code) {
-            // Fix invalid unicode math symbols into valid C/C++ operators
             let c = code
                 .replace(/≠/g, '!=')
                 .replace(/→/g, '->')
@@ -300,7 +299,6 @@ export class WebviewTemplateFactory {
 
             let safe = escapeHtml(c);
 
-            // Extract comments first
             const comments = [];
             safe = safe.replace(/(\\/\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)/g, function(m) {
                 const i = comments.length;
@@ -308,7 +306,6 @@ export class WebviewTemplateFactory {
                 return '___COMMENT_' + i + '___';
             });
 
-            // Extract strings
             const strings = [];
             safe = safe.replace(/("([^"\\\\]|\\\\.)*"|'([^'\\\\]|\\\\.)*')/g, function(m) {
                 const i = strings.length;
@@ -316,23 +313,17 @@ export class WebviewTemplateFactory {
                 return '___STRING_' + i + '___';
             });
 
-            // Colorize C/C++/Java/TS Keywords
             const keywords = /\\b(void|int|char|float|double|long|short|unsigned|signed|struct|enum|union|typedef|if|else|while|for|do|return|break|continue|switch|case|default|const|static|volatile|extern|inline|public|private|protected|class|template|typename|using|namespace|new|delete|try|catch|throw|auto|async|await|function|let|var|import|export|from)\\b/g;
             safe = safe.replace(keywords, '<span class="syn-keyword">$1</span>');
 
-            // Types & Constants
             safe = safe.replace(/\\b(Node|NULL|RED|BLACK|true|false|TRUE|FALSE|nullptr|std|size_t)\\b/g, '<span class="syn-type">$1</span>');
 
-            // Operators (-> and != and ==)
             safe = safe.replace(/(-&gt;|!=|==|=&gt;)/g, '<span class="syn-operator">$1</span>');
 
-            // Function calls
             safe = safe.replace(/\\b([a-zA-Z_]\\w*)(?=\\s*\\()/g, '<span class="syn-func">$1</span>');
 
-            // Numbers
             safe = safe.replace(/\\b(\\d+(\\.\\d+)?)\\b/g, '<span class="syn-number">$1</span>');
 
-            // Restore strings and comments using split/join
             strings.forEach(function(s, i) { safe = safe.split('___STRING_' + i + '___').join(s); });
             comments.forEach(function(cm, i) { safe = safe.split('___COMMENT_' + i + '___').join(cm); });
 
@@ -354,7 +345,7 @@ export class WebviewTemplateFactory {
                     '<div class="code-card">' +
                         '<div class="code-header">' +
                             '<span class="code-lang">' + language + '</span>' +
-                            '<button class="copy-code-btn" onclick="copyCodeText(this)">Copy Code</button>' +
+                            '<button class="copy-code-btn" type="button" onclick="copyCodeText(this)">Copy Code</button>' +
                         '</div>' +
                         '<pre class="code-pre"><code>' + colorizedCode + '</code></pre>' +
                     '</div>'
@@ -368,30 +359,23 @@ export class WebviewTemplateFactory {
                 return '<code class="inline-code">' + colorizeCode(code) + '</code>';
             });
 
-            // Headers
             html = html.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
             html = html.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
             html = html.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
 
-            // Bold
             html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
             html = html.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
 
-            // Italics
             html = html.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
 
-            // Badges / Alerts
             html = html.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
             html = html.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
 
-            // Lists
             html = html.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
 
-            // Newlines
             html = html.replace(/\\n\\n/g, '<br/><br/>');
             html = html.replace(/\\n/g, '<br/>');
 
-            // Restore Code Blocks using split and join
             codeBlocks.forEach(function(block, i) {
                 const placeholder = '%%%CODEBLOCK_' + i + '%%%';
                 html = html.split(placeholder).join(block);
@@ -440,13 +424,20 @@ export class WebviewTemplateFactory {
                 vscode.postMessage({ command: 'sendMessage', text: text });
                 promptInput.value = '';
                 promptInput.style.height = '38px';
+                promptInput.focus();
             }
 
-            sendBtn.addEventListener('click', handleSend);
+            sendBtn.addEventListener('click', function(e) {
+                if (e) e.preventDefault();
+                handleSend();
+            });
+
             promptInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
                     e.preventDefault();
+                    e.stopPropagation();
                     handleSend();
+                    return false;
                 }
             });
 
@@ -465,7 +456,7 @@ export class WebviewTemplateFactory {
 
             stopBtn.addEventListener('click', function() {
                 vscode.postMessage({ command: 'cancelRequest' });
-                sendBtn.style.display = 'block';
+                sendBtn.style.display = 'flex';
                 stopBtn.style.display = 'none';
             });
 
@@ -477,7 +468,7 @@ export class WebviewTemplateFactory {
                         break;
                     case 'startStream':
                         sendBtn.style.display = 'none';
-                        stopBtn.style.display = 'block';
+                        stopBtn.style.display = 'flex';
                         currentStreamRawText = '';
                         const row = document.createElement('div');
                         row.className = 'message-row assistant';
@@ -501,7 +492,7 @@ export class WebviewTemplateFactory {
                     case 'endStream':
                         currentStreamBubble = null;
                         currentStreamRawText = '';
-                        sendBtn.style.display = 'block';
+                        sendBtn.style.display = 'flex';
                         stopBtn.style.display = 'none';
                         break;
                     case 'setLoading':
@@ -509,7 +500,7 @@ export class WebviewTemplateFactory {
                             typingIndicator.classList.add('active');
                         } else {
                             typingIndicator.classList.remove('active');
-                            sendBtn.style.display = 'block';
+                            sendBtn.style.display = 'flex';
                             stopBtn.style.display = 'none';
                         }
                         scrollToBottom();
