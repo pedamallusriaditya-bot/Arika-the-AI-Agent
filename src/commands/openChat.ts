@@ -277,14 +277,14 @@ export class OpenChatCommand {
             font-size: 0.86rem; line-height: 1.5; color: #cdd6f4;
         }
 
-        /* Syntax Highlight Tokens */
-        .syn-keyword { color: #f38ba8; font-weight: 700; }  /* Pink/Red Control Flow */
-        .syn-type { color: #f9e2af; font-weight: 600; }     /* Gold Types/Structs */
-        .syn-func { color: #89b4fa; font-weight: 600; }     /* Sapphire Functions */
-        .syn-string { color: #a6e3a1; }                    /* Emerald Strings */
-        .syn-number { color: #fab387; }                    /* Peach Numbers */
-        .syn-comment { color: #6c7086; font-style: italic; }/* Slate Grey Comments */
-        .syn-operator { color: #89dceb; font-weight: 700; } /* Sky Blue Operators */
+        /* Syntax Tokens */
+        .syn-keyword { color: #f38ba8; font-weight: 700; }
+        .syn-type { color: #f9e2af; font-weight: 600; }
+        .syn-func { color: #89b4fa; font-weight: 600; }
+        .syn-string { color: #a6e3a1; }
+        .syn-number { color: #fab387; }
+        .syn-comment { color: #6c7086; font-style: italic; }
+        .syn-operator { color: #89dceb; font-weight: 700; }
 
         .md-li { margin-left: 18px; list-style-type: disc; margin-bottom: 4px; }
         .badge-alert {
@@ -403,51 +403,77 @@ export class OpenChatCommand {
         function renderRichMarkdown(text) {
             if (!text) return '';
 
-            const codeBlocks = [];
             var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
-            var codeBlockRegex = new RegExp(t3 + '([a-zA-Z0-9_+-]*)[\\\\r\\\\n]+([\\\\s\\\\S]*?)(?:' + t3 + '|$)', 'g');
+            var parts = text.split(t3);
+            var codeBlocks = [];
+            var html = '';
 
-            let html = text.replace(codeBlockRegex, function(match, lang, code) {
-                const idx = codeBlocks.length;
-                const language = (lang || 'code').toUpperCase();
-                const colorizedCode = colorizeCode(code.trim());
-                codeBlocks.push(
-                    '<div class="code-card">' +
-                        '<div class="code-header">' +
-                            '<span class="code-lang">' + language + '</span>' +
-                            '<button class="copy-code-btn" type="button" onclick="copyCodeText(this)">Copy Code</button>' +
-                        '</div>' +
-                        '<pre class="code-pre"><code>' + colorizedCode + '</code></pre>' +
-                    '</div>'
-                );
-                return '%%%CODEBLOCK_' + idx + '%%%';
-            });
+            for (var i = 0; i < parts.length; i++) {
+                if (i % 2 === 1) {
+                    var blockText = parts[i];
+                    var firstLineEnd = blockText.indexOf('\\n');
+                    if (firstLineEnd === -1) firstLineEnd = blockText.indexOf('\\r');
+                    var lang = 'CODE';
+                    var codeContent = blockText;
+                    if (firstLineEnd !== -1) {
+                        lang = blockText.substring(0, firstLineEnd).trim() || 'CODE';
+                        codeContent = blockText.substring(firstLineEnd + 1);
+                    }
+                    var idx = codeBlocks.length;
+                    var colorizedCode = colorizeCode(codeContent.trim());
+                    codeBlocks.push(
+                        '<div class="code-card">' +
+                            '<div class="code-header">' +
+                                '<span class="code-lang">' + escapeHtml(lang.toUpperCase()) + '</span>' +
+                                '<button class="copy-code-btn" type="button" onclick="copyCodeText(this)">Copy Code</button>' +
+                            '</div>' +
+                            '<pre class="code-pre"><code>' + colorizedCode + '</code></pre>' +
+                        '</div>'
+                    );
+                    html += '%%%CODEBLOCK_' + idx + '%%%';
+                } else {
+                    html += parts[i];
+                }
+            }
 
             var t1 = String.fromCharCode(96);
-            var inlineCodeRegex = new RegExp(t1 + '([^' + t1 + ']+)' + t1, 'g');
-            html = html.replace(inlineCodeRegex, function(m, code) {
-                return '<code class="inline-code">' + colorizeCode(code) + '</code>';
-            });
+            var inlineParts = html.split(t1);
+            var inlineHtml = '';
+            for (var j = 0; j < inlineParts.length; j++) {
+                if (j % 2 === 1) {
+                    inlineHtml += '<code class="inline-code">' + colorizeCode(inlineParts[j]) + '</code>';
+                } else {
+                    inlineHtml += inlineParts[j];
+                }
+            }
+            html = inlineHtml;
 
+            // Headers
             html = html.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
             html = html.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
             html = html.replace(/^# (.*$)/gim, '<h2 class="md-h2">$1</h2>');
 
+            // Bold
             html = html.replace(/\\*\\*(.*?)\\*\\*/g, '<strong class="md-bold">$1</strong>');
             html = html.replace(/__(.*?)__/g, '<strong class="md-bold">$1</strong>');
 
+            // Italics
             html = html.replace(/\\*(.*?)\\*/g, '<em class="md-italic">$1</em>');
 
+            // Badges / Alerts
             html = html.replace(/\\[(IMPORTANT|WARNING|CAUTION)\\]/gi, '<span class="badge-alert alert-warning">$1</span>');
             html = html.replace(/\\[(NOTE|TIP|INFO)\\]/gi, '<span class="badge-alert alert-info">$1</span>');
 
+            // Lists
             html = html.replace(/^\\s*[-*]\\s+(.*$)/gim, '<div class="md-li">$1</div>');
 
+            // Newlines
             html = html.replace(/\\n\\n/g, '<br/><br/>');
             html = html.replace(/\\n/g, '<br/>');
 
-            codeBlocks.forEach(function(block, i) {
-                const placeholder = '%%%CODEBLOCK_' + i + '%%%';
+            // Restore Code Blocks
+            codeBlocks.forEach(function(block, idx) {
+                var placeholder = '%%%CODEBLOCK_' + idx + '%%%';
                 html = html.split(placeholder).join(block);
             });
 
