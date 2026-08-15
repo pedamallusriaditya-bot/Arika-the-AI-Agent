@@ -37,7 +37,6 @@ export class AIService implements IAIService {
     private geminiClient: GoogleGenerativeAI | undefined;
     private openaiClient: OpenAI | undefined;
 
-    private readonly geminiModelName: string = 'gemini-1.5-flash';
     private readonly openaiModelName: string = 'gpt-4o-mini';
 
     constructor() {
@@ -143,7 +142,7 @@ ${fileSnippet}
     }
 
     /**
-     * Executes real-time token streaming using Google Gemini SDK.
+     * Executes real-time token streaming using Google Gemini SDK with automated model fallback.
      */
     private async askGeminiStream(
         systemInstruction: string,
@@ -151,37 +150,58 @@ ${fileSnippet}
         onChunk: (chunk: string) => void,
         cancelToken?: vscode.CancellationToken
     ): Promise<string> {
-        try {
-            const model = this.geminiClient!.getGenerativeModel({
-                model: this.geminiModelName,
-                systemInstruction
-            });
+        const candidateModels = [
+            'gemini-2.0-flash',
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-pro-latest',
+            'gemini-2.0-flash-exp',
+            'gemini-pro'
+        ];
 
-            const resultStream = await model.generateContentStream(userPrompt);
-            let accumulatedText = '';
+        let lastError: any = null;
 
-            for await (const chunk of resultStream.stream) {
-                if (cancelToken?.isCancellationRequested) {
-                    Logger.info('[AIService] Stream cancelled by user (Gemini).');
-                    const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
-                    onChunk(cancelMsg);
-                    return accumulatedText + cancelMsg;
+        for (const modelName of candidateModels) {
+            try {
+                Logger.info(`[AIService] Attempting Gemini stream with model [${modelName}]...`);
+                const model = this.geminiClient!.getGenerativeModel({
+                    model: modelName,
+                    systemInstruction
+                });
+
+                const resultStream = await model.generateContentStream(userPrompt);
+                let accumulatedText = '';
+
+                for await (const chunk of resultStream.stream) {
+                    if (cancelToken?.isCancellationRequested) {
+                        Logger.info('[AIService] Stream cancelled by user (Gemini).');
+                        const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
+                        onChunk(cancelMsg);
+                        return accumulatedText + cancelMsg;
+                    }
+
+                    const token = chunk.text();
+                    if (token) {
+                        accumulatedText += token;
+                        onChunk(token);
+                    }
                 }
 
-                const token = chunk.text();
-                if (token) {
-                    accumulatedText += token;
-                    onChunk(token);
+                return accumulatedText;
+            } catch (error: any) {
+                lastError = error;
+                const isNotFound = error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('not found');
+                if (isNotFound) {
+                    Logger.warn(`[AIService] Model [${modelName}] returned 404 / Not Found. Trying next fallback model...`);
+                    continue;
                 }
+                break;
             }
-
-            return accumulatedText;
-        } catch (error: any) {
-            Logger.error('[AIService] Gemini API Exception', error);
-            const formattedError = this.formatErrorMessage(error, 'Gemini');
-            onChunk(formattedError);
-            return formattedError;
         }
+
+        Logger.error('[AIService] Gemini API Exception across all candidate models', lastError);
+        const formattedError = this.formatErrorMessage(lastError, 'Gemini');
+        onChunk(formattedError);
+        return formattedError;
     }
 
     /**
