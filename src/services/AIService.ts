@@ -34,9 +34,11 @@ export interface IAIService {
 }
 
 export class AIService implements IAIService {
+    private groqClient: OpenAI | undefined;
     private geminiClient: GoogleGenerativeAI | undefined;
     private openaiClient: OpenAI | undefined;
 
+    private readonly groqModelName: string = 'llama-3.3-70b-versatile';
     private readonly openaiModelName: string = 'gpt-4o-mini';
 
     constructor() {
@@ -44,8 +46,22 @@ export class AIService implements IAIService {
     }
 
     private initializeClients(): void {
+        const groqKey = process.env.GROQ_API_KEY?.trim();
         const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
         const openaiKey = process.env.OPENAI_API_KEY?.trim();
+
+        if (groqKey) {
+            try {
+                this.groqClient = new OpenAI({
+                    apiKey: groqKey,
+                    baseURL: 'https://api.groq.com/openai/v1'
+                });
+                Logger.info('[AIService] Groq API client initialized successfully with GROQ_API_KEY.');
+            } catch (error) {
+                Logger.error('[AIService] Failed to initialize Groq API client', error);
+                this.groqClient = undefined;
+            }
+        }
 
         if (geminiKey) {
             if (!geminiKey.startsWith('AIzaSy')) {
@@ -84,7 +100,7 @@ export class AIService implements IAIService {
     }
 
     /**
-     * Executes a streaming query using Gemini (preferred) or OpenAI (fallback).
+     * Executes a streaming query using Groq (top priority), Gemini, or OpenAI.
      */
     public async askStream(
         prompt: string,
@@ -94,8 +110,7 @@ export class AIService implements IAIService {
     ): Promise<string> {
         Logger.info(`[AIService] Executing streaming prompt (${prompt.length} chars)${context ? ` [${context.fileName}]` : ''}`);
 
-        // Re-check client initializations if env vars changed dynamically
-        if (!this.geminiClient && !this.openaiClient) {
+        if (!this.groqClient && !this.geminiClient && !this.openaiClient) {
             this.initializeClients();
         }
 
@@ -106,7 +121,6 @@ export class AIService implements IAIService {
             return emptyPromptMsg;
         }
 
-        // Build system prompt with workspace context
         let systemInstruction = 'You are Arika, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
 
         if (context) {
@@ -128,20 +142,75 @@ ${fileSnippet}
 \`\`\``;
         }
 
-        // Use Google Gemini API if client is available
+        // Priority 1: Groq API (Ultra-fast Llama 3.3 70B)
+        if (this.groqClient) {
+            return this.askOpenAICompatibleStream(this.groqClient, this.groqModelName, 'Groq', systemInstruction, trimmed, onChunk, cancelToken);
+        }
+
+        // Priority 2: Google Gemini API
         if (this.geminiClient) {
             return this.askGeminiStream(systemInstruction, trimmed, onChunk, cancelToken);
         }
 
-        // Fallback to OpenAI API if client is available
+        // Priority 3: OpenAI API
         if (this.openaiClient) {
-            return this.askOpenAIStream(systemInstruction, trimmed, onChunk, cancelToken);
+            return this.askOpenAICompatibleStream(this.openaiClient, this.openaiModelName, 'OpenAI', systemInstruction, trimmed, onChunk, cancelToken);
         }
 
-        const noKeyMsg = '⚠️ No valid AI API Key found. Please set `GEMINI_API_KEY` or `OPENAI_API_KEY` in your `.env` file.';
+        const noKeyMsg = '⚠️ No valid AI API Key found. Please set `GROQ_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY` in your `.env` file.';
         Logger.error(`[AIService] ${noKeyMsg}`);
         onChunk(noKeyMsg);
         return noKeyMsg;
+    }
+
+    /**
+     * Executes real-time token streaming using OpenAI-compatible SDK clients (Groq / OpenAI).
+     */
+    private async askOpenAICompatibleStream(
+        client: OpenAI,
+        modelName: string,
+        providerName: string,
+        systemInstruction: string,
+        userPrompt: string,
+        onChunk: (chunk: string) => void,
+        cancelToken?: vscode.CancellationToken
+    ): Promise<string> {
+        try {
+            Logger.info(`[AIService] Streaming via ${providerName} [${modelName}]...`);
+            const responseStream = await client.chat.completions.create({
+                model: modelName,
+                messages: [
+                    { role: 'system', content: systemInstruction },
+                    { role: 'user', content: userPrompt }
+                ],
+                stream: true,
+                temperature: 0.7
+            });
+
+            let accumulatedText = '';
+
+            for await (const chunk of responseStream) {
+                if (cancelToken?.isCancellationRequested) {
+                    Logger.info(`[AIService] Stream cancelled by user (${providerName}).`);
+                    const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
+                    onChunk(cancelMsg);
+                    return accumulatedText + cancelMsg;
+                }
+
+                const token = chunk.choices[0]?.delta?.content || '';
+                if (token) {
+                    accumulatedText += token;
+                    onChunk(token);
+                }
+            }
+
+            return accumulatedText;
+        } catch (error: any) {
+            Logger.error(`[AIService] ${providerName} API Exception`, error);
+            const formattedError = this.formatErrorMessage(error, providerName);
+            onChunk(formattedError);
+            return formattedError;
+        }
     }
 
     /**
@@ -205,52 +274,6 @@ ${fileSnippet}
         const formattedError = this.formatErrorMessage(lastError, 'Gemini');
         onChunk(formattedError);
         return formattedError;
-    }
-
-    /**
-     * Executes real-time token streaming using OpenAI SDK.
-     */
-    private async askOpenAIStream(
-        systemInstruction: string,
-        userPrompt: string,
-        onChunk: (chunk: string) => void,
-        cancelToken?: vscode.CancellationToken
-    ): Promise<string> {
-        try {
-            const responseStream = await this.openaiClient!.chat.completions.create({
-                model: this.openaiModelName,
-                messages: [
-                    { role: 'system', content: systemInstruction },
-                    { role: 'user', content: userPrompt }
-                ],
-                stream: true,
-                temperature: 0.7
-            });
-
-            let accumulatedText = '';
-
-            for await (const chunk of responseStream) {
-                if (cancelToken?.isCancellationRequested) {
-                    Logger.info('[AIService] Stream cancelled by user (OpenAI).');
-                    const cancelMsg = '\n\n🛑 *Generation cancelled by user.*';
-                    onChunk(cancelMsg);
-                    return accumulatedText + cancelMsg;
-                }
-
-                const token = chunk.choices[0]?.delta?.content || '';
-                if (token) {
-                    accumulatedText += token;
-                    onChunk(token);
-                }
-            }
-
-            return accumulatedText;
-        } catch (error: any) {
-            Logger.error('[AIService] OpenAI API Exception', error);
-            const formattedError = this.formatErrorMessage(error, 'OpenAI');
-            onChunk(formattedError);
-            return formattedError;
-        }
     }
 
     public async explainCode(
