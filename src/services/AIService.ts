@@ -107,7 +107,7 @@ export class AIService implements IAIService {
         }
 
         // Build system prompt with workspace context
-        let systemInstruction = 'You are Arika CodeTitan, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
+        let systemInstruction = 'You are Arika, a world-class AI coding assistant. Provide clear, concise, accurate, and beautifully structured responses with syntax-highlighted markdown code blocks.';
 
         if (context) {
             const maxLen = 4000;

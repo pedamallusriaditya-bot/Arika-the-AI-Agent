@@ -18,78 +18,78 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codetitan-sidebar-container",
-          "title": "CodeTitan",
+          "id": "arika-sidebar-container",
+          "title": "Arika",
           "icon": "$(comment-discussion)"
         }
       ]
     },
     "views": {
-      "codetitan-sidebar-container": [
+      "arika-sidebar-container": [
         {
           "type": "webview",
-          "id": "codetitan.sidebarView",
-          "name": "CodeTitan",
+          "id": "arika.sidebarView",
+          "name": "Arika",
           "icon": "$(comment-discussion)"
         }
       ]
     },
     "commands": [
       {
-        "command": "codetitan.openChat",
+        "command": "arika.openChat",
         "title": "Arika: Open Chat Panel",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "codetitan.explainSelection",
+        "command": "arika.explainSelection",
         "title": "Arika: Explain Selection",
         "icon": "$(lightbulb)"
       },
       {
-        "command": "codetitan.explainCurrentFile",
+        "command": "arika.explainCurrentFile",
         "title": "Arika: Explain Current File",
         "icon": "$(file-code)"
       },
       {
-        "command": "codetitan.focusSidebar",
-        "title": "CodeTitan: Focus Sidebar Chat",
+        "command": "arika.focusSidebar",
+        "title": "Arika: Focus Sidebar Chat",
         "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "codetitan.explainCurrentFile",
+          "command": "arika.explainCurrentFile",
           "group": "arika@1"
         },
         {
-          "command": "codetitan.explainSelection",
+          "command": "arika.explainSelection",
           "group": "arika@2",
           "when": "editorHasSelection"
         },
         {
-          "command": "codetitan.openChat",
+          "command": "arika.openChat",
           "group": "arika@3"
         }
       ],
       "commandPalette": [
         {
-          "command": "codetitan.openChat"
+          "command": "arika.openChat"
         },
         {
-          "command": "codetitan.explainSelection"
+          "command": "arika.explainSelection"
         },
         {
-          "command": "codetitan.explainCurrentFile"
+          "command": "arika.explainCurrentFile"
         },
         {
-          "command": "codetitan.focusSidebar"
+          "command": "arika.focusSidebar"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "codetitan.explainSelection",
+        "command": "arika.explainSelection",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorHasSelection"

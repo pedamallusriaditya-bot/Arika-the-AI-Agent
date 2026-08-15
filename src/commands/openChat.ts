@@ -4,7 +4,7 @@ import { IAIService, CurrentFileContext } from '../services/AIService';
 import { Logger } from '../utils/logger';
 
 export class OpenChatCommand {
-    public static readonly commandId = 'codetitan.openChat';
+    public static readonly commandId = 'arika.openChat';
     private static currentPanel: vscode.WebviewPanel | undefined;
 
     public static register(context: vscode.ExtensionContext, aiService: IAIService): vscode.Disposable {
@@ -33,7 +33,7 @@ export class OpenChatCommand {
     }
 
     private static execute(context: vscode.ExtensionContext, aiService: IAIService): void {
-        Logger.info('Executing command: codetitan.openChat');
+        Logger.info('Executing command: arika.openChat');
 
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -46,7 +46,7 @@ export class OpenChatCommand {
 
         const panel = vscode.window.createWebviewPanel(
             'arikaChatPanel',
-            'Arika CodeTitan Chat',
+            'Arika Chat',
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -111,7 +111,7 @@ export class OpenChatCommand {
         overrideFileContext?: CurrentFileContext
     ): Promise<void> {
         panel.webview.postMessage({ command: 'setLoading', loading: true });
-        panel.webview.postMessage({ command: 'startStream', sender: 'CodeTitan' });
+        panel.webview.postMessage({ command: 'startStream', sender: 'Arika' });
 
         const fileContext = overrideFileContext || this.getActiveFileContext();
         if (fileContext) {
@@ -126,7 +126,7 @@ export class OpenChatCommand {
                 });
             }, fileContext);
         } catch (error) {
-            Logger.error('Error in OpenChatCommand handleUserMessage', error);
+            Logger.error('Error handling webview chat message', error);
             panel.webview.postMessage({
                 command: 'streamChunk',
                 text: '\n⚠️ An error occurred while processing your request.'
@@ -143,7 +143,7 @@ export class OpenChatCommand {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arika CodeTitan Chat</title>
+    <title>Arika Chat</title>
     <style>
         :root {
             --bg-color: var(--vscode-editor-background, #1e1e2e);
@@ -169,15 +169,15 @@ export class OpenChatCommand {
         }
 
         header {
-            padding: 16px 20px;
-            background: rgba(0, 0, 0, 0.2);
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.2);
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
 
-        header h2 {
+        h2 {
             margin: 0;
             font-size: 1.1rem;
             font-weight: 600;
@@ -188,28 +188,28 @@ export class OpenChatCommand {
         }
 
         .badge {
-            background: linear-gradient(135deg, #89b4fa, #cba6f7);
-            color: #11111b;
             font-size: 0.7rem;
+            background: rgba(137, 180, 250, 0.15);
+            color: var(--accent-color);
             padding: 2px 8px;
             border-radius: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
+            border: 1px solid rgba(137, 180, 250, 0.3);
         }
 
         #chat-container {
             flex: 1;
-            padding: 20px;
+            padding: 24px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 16px;
+            scroll-behavior: smooth;
         }
 
         .message {
             display: flex;
             flex-direction: column;
-            max-width: 85%;
+            max-width: 80%;
             animation: fadeIn 0.3s ease-in-out;
         }
 
@@ -221,35 +221,35 @@ export class OpenChatCommand {
             align-self: flex-start;
         }
 
+        .sender-name {
+            font-size: 0.75rem;
+            margin-bottom: 4px;
+            color: var(--fg-color);
+            opacity: 0.7;
+        }
+
         .bubble {
             padding: 12px 16px;
             border-radius: 12px;
+            font-size: 0.9rem;
             line-height: 1.5;
-            font-size: 0.95rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            white-space: pre-wrap;
+            word-break: break-word;
         }
 
         .message.user .bubble {
-            background-color: var(--user-bubble);
+            background: var(--user-bubble);
             border-bottom-right-radius: 2px;
-            color: var(--fg-color);
         }
 
         .message.ai .bubble {
-            background-color: var(--ai-bubble);
+            background: var(--ai-bubble);
             border: 1px solid var(--border-color);
             border-bottom-left-radius: 2px;
         }
 
-        .sender-name {
-            font-size: 0.75rem;
-            opacity: 0.7;
-            margin-bottom: 4px;
-            margin-left: 4px;
-        }
-
         #input-container {
-            padding: 16px 20px;
+            padding: 16px 24px;
             background: rgba(0, 0, 0, 0.2);
             border-top: 1px solid var(--border-color);
             display: flex;
@@ -258,17 +258,17 @@ export class OpenChatCommand {
 
         textarea {
             flex: 1;
-            background: var(--card-bg);
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--border-color);
             border-radius: 8px;
             color: var(--fg-color);
             padding: 10px 14px;
             font-family: inherit;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             resize: none;
             outline: none;
-            transition: border-color 0.2s;
-            height: 40px;
+            min-height: 42px;
+            max-height: 120px;
         }
 
         textarea:focus {
@@ -276,23 +276,40 @@ export class OpenChatCommand {
         }
 
         button {
-            background: linear-gradient(135deg, #89b4fa, #b4befe);
+            background: var(--accent-color);
             color: #11111b;
             border: none;
             border-radius: 8px;
             padding: 0 20px;
             font-weight: 600;
             cursor: pointer;
-            transition: opacity 0.2s, transform 0.1s;
+            transition: background 0.2s;
         }
 
         button:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
+            background: var(--accent-hover);
         }
 
-        button:active {
-            transform: translateY(0);
+        .typing-dots {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .dot {
+            width: 4px;
+            height: 4px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            animation: pulse 1.4s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes pulse {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
         }
 
         @keyframes fadeIn {
@@ -303,16 +320,16 @@ export class OpenChatCommand {
 </head>
 <body>
     <header>
-        <h2>⚡ Arika CodeTitan <span class="badge">v0.0.1</span></h2>
+        <h2>⚡ Arika <span class="badge">v0.0.1</span></h2>
     </header>
     <div id="chat-container">
         <div class="message ai">
-            <div class="sender-name">CodeTitan</div>
-            <div class="bubble">Welcome to Arika CodeTitan Panel! Type your coding question below.</div>
+            <div class="sender-name">Arika</div>
+            <div class="bubble">Welcome to Arika Panel! Type your coding question below.</div>
         </div>
     </div>
     <div id="input-container">
-        <textarea id="prompt-input" placeholder="Ask CodeTitan anything..." rows="1"></textarea>
+        <textarea id="prompt-input" placeholder="Ask Arika anything..." rows="1"></textarea>
         <button id="send-btn">Send</button>
     </div>
 
@@ -324,8 +341,8 @@ export class OpenChatCommand {
 
         function appendMessage(sender, text, isUser) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = 'message ' + (isUser ? 'user' : 'ai');
-
+            msgDiv.className = \`message \${isUser ? 'user' : 'ai'}\`;
+            
             const nameDiv = document.createElement('div');
             nameDiv.className = 'sender-name';
             nameDiv.textContent = sender;
@@ -338,30 +355,32 @@ export class OpenChatCommand {
             msgDiv.appendChild(bubbleDiv);
             chatContainer.appendChild(msgDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+            return bubbleDiv;
         }
 
-        function handleSend() {
+        sendBtn.addEventListener('click', () => {
             const text = promptInput.value.trim();
-            if (!text) return;
-
-            appendMessage('You', text, true);
-            vscode.postMessage({ command: 'sendMessage', text: text });
-            promptInput.value = '';
-        }
-
-        sendBtn.addEventListener('click', handleSend);
-        promptInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
+            if (text) {
+                appendMessage('You', text, true);
+                vscode.postMessage({ command: 'sendMessage', text });
+                promptInput.value = '';
+                promptInput.style.height = 'auto';
             }
         });
 
-        let currentStreamBubble = null;
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+        });
 
-        function scrollToBottom() {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+        promptInput.addEventListener('input', () => {
+            promptInput.style.height = 'auto';
+            promptInput.style.height = promptInput.scrollHeight + 'px';
+        });
+
+        let currentStreamBubble = null;
 
         window.addEventListener('message', (event) => {
             const message = event.data;
@@ -369,21 +388,8 @@ export class OpenChatCommand {
                 case 'appendUserMessage':
                     appendMessage('You', message.text, true);
                     break;
-                case 'receiveMessage':
-                    appendMessage(message.sender, message.text, false);
-                    break;
                 case 'startStream':
-                    const msgDiv = document.createElement('div');
-                    msgDiv.className = 'message ai';
-                    const nameDiv = document.createElement('div');
-                    nameDiv.className = 'sender-name';
-                    nameDiv.textContent = message.sender || 'CodeTitan';
-                    currentStreamBubble = document.createElement('div');
-                    currentStreamBubble.className = 'bubble';
-                    msgDiv.appendChild(nameDiv);
-                    msgDiv.appendChild(currentStreamBubble);
-                    chatContainer.appendChild(msgDiv);
-                    scrollToBottom();
+                    currentStreamBubble = appendMessage(message.sender || 'Arika', '', false);
                     break;
                 case 'streamChunk':
                     if (currentStreamBubble) {

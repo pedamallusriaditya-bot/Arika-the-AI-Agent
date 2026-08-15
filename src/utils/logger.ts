@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 export class Logger {
     private static outputChannel: vscode.OutputChannel | undefined;
 
-    public static initialize(channelName: string = 'Arika CodeTitan'): void {
+    public static initialize(channelName: string = 'Arika'): void {
         if (!this.outputChannel) {
             this.outputChannel = vscode.window.createOutputChannel(channelName);
         }

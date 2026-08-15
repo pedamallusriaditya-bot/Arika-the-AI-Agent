@@ -9,7 +9,7 @@ export enum ExtensionErrorCode {
 }
 
 /**
- * Base custom error class for CodeTitan enterprise exceptions.
+ * Base custom error class for Arika enterprise exceptions.
  */
 export class ExtensionError extends Error {
     public readonly code: ExtensionErrorCode;

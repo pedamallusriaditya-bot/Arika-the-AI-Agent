@@ -1,11 +1,11 @@
 /**
- * Decoupled HTML/CSS/JS template generator factory for CodeTitan webviews.
+ * Decoupled HTML/CSS/JS template generator factory for Arika webviews.
  */
 export class WebviewTemplateFactory {
     /**
      * Generates Sidebar Webview HTML content.
      */
-    public static getSidebarHtml(title: string = 'CodeTitan'): string {
+    public static getSidebarHtml(title: string = 'Arika'): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -166,8 +166,8 @@ export class WebviewTemplateFactory {
 
     <div id="chat-messages">
         <div class="message-row assistant">
-            <div class="sender-tag">CodeTitan</div>
-            <div class="bubble">Welcome to CodeTitan! Ask me anything about your project or type code prompts below.</div>
+            <div class="sender-tag">Arika</div>
+            <div class="bubble">Welcome to Arika! Ask me anything about your project or type code prompts below.</div>
         </div>
     </div>
 
@@ -179,7 +179,7 @@ export class WebviewTemplateFactory {
 
     <div class="input-area">
         <div class="input-wrapper">
-            <textarea id="prompt-input" placeholder="Ask CodeTitan..." rows="1"></textarea>
+            <textarea id="prompt-input" placeholder="Ask Arika..." rows="1"></textarea>
             <button class="send-btn" id="send-btn">Send</button>
             <button class="send-btn" id="stop-btn" style="display:none; background: #f38ba8; color: #11111b;">Stop</button>
         </div>
@@ -262,7 +262,7 @@ export class WebviewTemplateFactory {
                         row.className = 'message-row assistant';
                         const tag = document.createElement('div');
                         tag.className = 'sender-tag';
-                        tag.textContent = message.sender || 'CodeTitan';
+                        tag.textContent = message.sender || 'Arika';
                         currentStreamBubble = document.createElement('div');
                         currentStreamBubble.className = 'bubble';
                         row.appendChild(tag);

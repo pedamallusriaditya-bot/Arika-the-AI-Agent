@@ -5,7 +5,7 @@ import { OpenChatCommand } from './openChat';
 import { Logger } from '../utils/logger';
 
 export class ExplainCurrentFileCommand {
-    public static readonly commandId = 'codetitan.explainCurrentFile';
+    public static readonly commandId = 'arika.explainCurrentFile';
 
     public static register(context: vscode.ExtensionContext, aiService: IAIService): vscode.Disposable {
         return vscode.commands.registerCommand(this.commandId, () => {

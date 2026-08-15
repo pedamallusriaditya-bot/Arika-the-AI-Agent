@@ -7,7 +7,7 @@ import { WebviewTemplateFactory } from './WebviewTemplateFactory';
 import { Logger } from '../utils/logger';
 
 export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'codetitan.sidebarView';
+    public static readonly viewType = 'arika.sidebarView';
     private _view?: vscode.WebviewView;
     private _activeCancellationTokenSource?: vscode.CancellationTokenSource;
 
@@ -33,7 +33,7 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
 
-        webviewView.webview.html = WebviewTemplateFactory.getSidebarHtml('CodeTitan');
+        webviewView.webview.html = WebviewTemplateFactory.getSidebarHtml('Arika');
 
         // Restore persisted conversation history upon webview resolution
         if (this._chatMemory) {
@@ -42,7 +42,7 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
                 if (msg.role !== 'system') {
                     webviewView.webview.postMessage({
                         command: 'receiveMessage',
-                        sender: msg.role === 'user' ? 'You' : 'CodeTitan',
+                        sender: msg.role === 'user' ? 'You' : 'Arika',
                         text: msg.content
                     });
                 }
@@ -69,12 +69,12 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
                     if (this._chatMemory) {
                         await this._chatMemory.clearHistory();
                     }
-                    vscode.window.showInformationMessage('CodeTitan: Chat history cleared.');
+                    vscode.window.showInformationMessage('Arika: Chat history cleared.');
                     break;
                 case 'copyText':
                     if (message.text) {
                         await vscode.env.clipboard.writeText(message.text);
-                        vscode.window.showInformationMessage('CodeTitan: Copied to clipboard!');
+                        vscode.window.showInformationMessage('Arika: Copied to clipboard!');
                     }
                     break;
             }
@@ -115,7 +115,7 @@ export class ChatSidebarViewProvider implements vscode.WebviewViewProvider {
 
         // Show typing indicator in UI
         this._view.webview.postMessage({ command: 'setLoading', loading: true });
-        this._view.webview.postMessage({ command: 'startStream', sender: 'CodeTitan' });
+        this._view.webview.postMessage({ command: 'startStream', sender: 'Arika' });
 
         const fileContext = this._getActiveFileContext();
         if (fileContext) {

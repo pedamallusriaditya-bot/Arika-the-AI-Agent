@@ -19,7 +19,7 @@ import { Logger } from './utils/logger';
  * Initializes core services, injects dependencies, and wires extension subscriptions.
  */
 export function activate(context: vscode.ExtensionContext): void {
-    Logger.initialize('Arika CodeTitan');
+    Logger.initialize('Arika');
     Logger.info('Activating Arika Extension v0.0.1...');
 
     // Load environment variables from .env file located at extension root
@@ -50,8 +50,8 @@ export function activate(context: vscode.ExtensionContext): void {
         );
 
         // Register sidebar focus command
-        const focusSidebarDisposable = vscode.commands.registerCommand('codetitan.focusSidebar', () => {
-            vscode.commands.executeCommand('codetitan.sidebarView.focus');
+        const focusSidebarDisposable = vscode.commands.registerCommand('arika.focusSidebar', () => {
+            vscode.commands.executeCommand('arika.sidebarView.focus');
         });
 
         // Register extension commands with injected AIService

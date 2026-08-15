@@ -4,7 +4,7 @@ import { IAIService, CurrentFileContext } from '../services/AIService';
 import { Logger } from '../utils/logger';
 
 export class ExplainSelectionCommand {
-    public static readonly commandId = 'codetitan.explainSelection';
+    public static readonly commandId = 'arika.explainSelection';
 
     public static register(_context: vscode.ExtensionContext, aiService: IAIService): vscode.Disposable {
         return vscode.commands.registerCommand(this.commandId, () => {
@@ -13,7 +13,7 @@ export class ExplainSelectionCommand {
     }
 
     private static async execute(aiService: IAIService): Promise<void> {
-        Logger.info('Executing command: codetitan.explainSelection');
+        Logger.info('Executing command: arika.explainSelection');
 
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -43,7 +43,7 @@ export class ExplainSelectionCommand {
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: 'Arika CodeTitan',
+                title: 'Arika',
                 cancellable: false
             },
             async (progress) => {

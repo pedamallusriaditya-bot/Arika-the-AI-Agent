@@ -27,7 +27,7 @@ export interface IChatMemory {
 }
 
 export class ChatMemory implements IChatMemory {
-    private static readonly STORAGE_KEY = 'codetitan.chatMemorySession';
+    private static readonly STORAGE_KEY = 'arika.chatMemorySession';
     private sessionId: string;
     private messages: ChatMessage[] = [];
     private sessionSummary?: string;
