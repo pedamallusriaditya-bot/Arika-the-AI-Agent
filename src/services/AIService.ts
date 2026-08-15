@@ -48,9 +48,12 @@ export class AIService implements IAIService {
         const openaiKey = process.env.OPENAI_API_KEY?.trim();
 
         if (geminiKey) {
+            if (!geminiKey.startsWith('AIzaSy')) {
+                Logger.warn('[AIService] GEMINI_API_KEY does not start with "AIzaSy". Google AI Studio API keys always begin with "AIzaSy".');
+            }
             try {
                 this.geminiClient = new GoogleGenerativeAI(geminiKey);
-                Logger.info('[AIService] Google Gemini client initialized successfully with GEMINI_API_KEY.');
+                Logger.info('[AIService] Google Gemini client initialized successfully.');
             } catch (error) {
                 Logger.error('[AIService] Failed to initialize Google Gemini client', error);
                 this.geminiClient = undefined;
@@ -266,6 +269,12 @@ ${fileSnippet}
 
     private formatErrorMessage(error: any, provider: string): string {
         const msg = error?.message || '';
+        const geminiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+
+        if (provider === 'Gemini' && geminiKey && !geminiKey.startsWith('AIzaSy')) {
+            return `⚠️ **Invalid Gemini API Key Format**: The \`GEMINI_API_KEY\` in your \`.env\` file does not start with \`AIzaSy...\` (Google AI Studio keys always start with \`AIzaSy...\`).\n\n👉 **How to get a free key:**\n1. Visit [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).\n2. Click **Create API Key** and copy the string starting with \`AIzaSy...\` into your \`.env\` file.`;
+        }
+
         if (error?.status === 401 || msg.includes('401') || msg.includes('API_KEY_INVALID')) {
             return `⚠️ **${provider} Auth Error**: Invalid or expired API Key. Please check your \`.env\` configuration.`;
         }
