@@ -286,7 +286,7 @@ export class WebviewTemplateFactory {
 
             const codeBlocks = [];
             var t3 = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
-            var codeBlockRegex = new RegExp(t3 + '(\\\\w*)\\\\n([\\\\s\\\\S]*?)' + t3, 'g');
+            var codeBlockRegex = new RegExp(t3 + '([a-zA-Z0-9_+-]*)[\\\\r\\\\n]+([\\\\s\\\\S]*?)(?:' + t3 + '|$)', 'g');
 
             let html = text.replace(codeBlockRegex, function(match, lang, code) {
                 const idx = codeBlocks.length;
@@ -333,9 +333,10 @@ export class WebviewTemplateFactory {
             html = html.replace(/\\n\\n/g, '<br/><br/>');
             html = html.replace(/\\n/g, '<br/>');
 
-            // Restore Code Blocks
+            // Restore Code Blocks using split and join to prevent $ regex replacement pattern bugs
             codeBlocks.forEach(function(block, i) {
-                html = html.replace('___CODE_BLOCK_' + i + '___', block);
+                const placeholder = '___CODE_BLOCK_' + i + '___';
+                html = html.split(placeholder).join(block);
             });
 
             return html;
